@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-build-test:
+    runs-on: ubuntu-latest
+    name: Check / Build / Test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Update dependencies
+        run: |
+          moon version --all
+          moon update
+
+      - name: Check (type / syntax, warnings are errors)
+        run: moon check --deny-warn
+
+      - name: Test
+        run: moon test
+
+      - name: Corpus self-check
+        run: moon run cmd/verify
+
+      - name: Build CLI
+        run: moon build --target native cmd/main
