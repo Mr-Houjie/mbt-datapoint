@@ -1,0 +1,4 @@
+# 语料必须是原始字节：包尾的 CRLF 是协议的一部分，
+# 一旦被换行归一化，解码就会报 BadTail。
+*.frame -text
+*.frame binary
