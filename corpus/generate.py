@@ -112,6 +112,34 @@ EDGE = {
     ),
 }
 
+# 分包组。同一组的多帧共用文件名前缀，verify 会把它们喂进同一台
+# 重组器，要求最终拼成一条完整数据区。文件名里的 p1、p2 只是排序用，
+# 真正的包号在报文体的 PNO 字段里。
+SPLIT = {
+    "split-2__p1.frame": seg(
+        QN, "32", "2051", "123456", MN, "6",
+        "DataTime=20240115103000;w01018-Rtd=12.5", pnum=2, pno=1,
+    ),
+    "split-2__p2.frame": seg(
+        QN, "32", "2051", "123456", MN, "6",
+        "w01018-Flag=N", pnum=2, pno=2,
+    ),
+    "split-3__p1.frame": seg(
+        "20240116083000123", "31", "2031", "123456", MN, "6",
+        "DataTime=20240115000000;a34013-Avg=1.44", pnum=3, pno=1,
+    ),
+    "split-3__p2.frame": seg(
+        "20240116083000123", "31", "2031", "123456", MN, "6",
+        "a34013-Max=2.10;a34013-Min=0.92", pnum=3, pno=2,
+    ),
+    # 分包边界正好落在一个中文字段上：长度字段必须按字节算，
+    # 按字符算会让这一组拼接失败。
+    "split-3__p3.frame": seg(
+        "20240116083000123", "31", "2031", "123456", MN, "6",
+        "Info=备用通道;a34013-Flag=N", pnum=3, pno=3,
+    ),
+}
+
 BAD = {
     "BadCrc__校验码被改动.frame": seg(
         QN, "31", "2011", "123456", MN, "5",
@@ -180,7 +208,7 @@ def build_bad(name: str, seg_text: str) -> bytes:
 
 
 def main() -> None:
-    for sub in ("good", "edge", "bad"):
+    for sub in ("good", "edge", "bad", "split"):
         d = os.path.join(ROOT, sub)
         os.makedirs(d, exist_ok=True)
         for old in os.listdir(d):
@@ -190,10 +218,12 @@ def main() -> None:
         write(os.path.join(ROOT, "good", name), make_frame(s))
     for name, s in EDGE.items():
         write(os.path.join(ROOT, "edge", name), make_frame(s))
+    for name, s in SPLIT.items():
+        write(os.path.join(ROOT, "split", name), make_frame(s))
     for name, s in BAD.items():
         write(os.path.join(ROOT, "bad", name), build_bad(name, s))
 
-    total = len(GOOD) + len(EDGE) + len(BAD)
+    total = len(GOOD) + len(EDGE) + len(SPLIT) + len(BAD)
     sys.stdout.write("生成 %d 个语料文件\n" % total)
 
 

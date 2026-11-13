@@ -58,6 +58,76 @@ fn expected_error(name : String) -> String {
 }
 
 ///|
+// 分包组的文件名形如 `split-3__p1.frame`，`__` 前是同组前缀。
+fn group_prefix(name : String) -> String {
+  let sb = StringBuilder()
+  let mut prev_underscore = false
+  for c in name {
+    if c == '_' {
+      if prev_underscore {
+        break
+      }
+      prev_underscore = true
+    } else {
+      prev_underscore = false
+    }
+    sb.write_char(c)
+  }
+  let raw = sb.to_string()
+  let trimmed = raw.trim_end(chars="_").to_string()
+  trimmed
+}
+
+///|
+/// 把同一组的分包帧喂进同一台重组器，要求最终拼成一条完整数据区。
+fn check_split_group(
+  dir : String,
+  prefix : String,
+  names : Array[String],
+) -> Bool {
+  let r = @lib.Reassembler::new()
+  let mut merged : @lib.DataArea? = None
+  let mut failure = ""
+  for name in names {
+    if merged is Some(_) {
+      // 已经收齐，同组不该再有帧；有就说明语料本身写错了
+      continue
+    }
+    let raw = match read_text(join_path(dir, name)) {
+      Some(text) => text
+      None => {
+        println("  FAIL \{name}  读不出文件")
+        return false
+      }
+    }
+    match @lib.Frame::decode(raw) {
+      Err(error) => {
+        println("  FAIL \{name}  \{error.kind()}：\{error.message()}")
+        return false
+      }
+      Ok(frame) =>
+        match r.push(frame) {
+          @lib.Pending(_, _) => ()
+          @lib.Complete(area) => merged = Some(area)
+          @lib.Conflict(reason) => failure = reason
+          @lib.NotSplit => failure = "未声明分包"
+        }
+    }
+  }
+  match merged {
+    Some(area) => {
+      println("  OK   \{prefix}  \{names.length()} 包 → \{area.length()} 项")
+      true
+    }
+    None => {
+      let why = if failure == "" { "未收齐" } else { failure }
+      println("  FAIL \{prefix}  \{why}")
+      false
+    }
+  }
+}
+
+///|
 /// 校验一条合法帧。返回 `true` 表示通过。
 fn check_good(dir : String, name : String) -> Bool {
   let path = join_path(dir, name)
@@ -94,6 +164,7 @@ fn main {
   let dir = if args.length() > 1 { args[1] } else { "corpus" }
   let good_dir = join_path(dir, "good")
   let edge_dir = join_path(dir, "edge")
+  let split_dir = join_path(dir, "split")
   let bad_dir = join_path(dir, "bad")
 
   if !@fs.path_exists(dir) {
@@ -119,6 +190,27 @@ fn main {
     total = total + 1
     if check_good(edge_dir, name) {
       passed = passed + 1
+    }
+  }
+
+  println("")
+  println("分包组  \{split_dir}")
+  let split_names = list_files(split_dir)
+  let seen : Array[String] = []
+  for name in split_names {
+    let prefix = group_prefix(name)
+    if !seen.contains(prefix) {
+      seen.push(prefix)
+      total = total + 1
+      let group : Array[String] = []
+      for other in split_names {
+        if group_prefix(other) == prefix {
+          group.push(other)
+        }
+      }
+      if check_split_group(split_dir, prefix, group) {
+        passed = passed + 1
+      }
     }
   }
 
