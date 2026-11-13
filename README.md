@@ -173,6 +173,10 @@ moon test              # 34 个单元测试（含对抗性测试）
 moon run cmd/verify    # 27 个语料用例
 ```
 
+## 开发历程
+
+选题为什么从文本换行换到 HJ 212、AI 在哪儿帮了倒忙、测试抓出过哪三个真 bug，都记在 [`DEVLOG.md`](DEVLOG.md)。
+
 ## 许可
 
 MIT
