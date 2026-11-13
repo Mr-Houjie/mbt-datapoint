@@ -146,7 +146,7 @@ pub(all) struct Framer {
 
 ///|
 pub fn Framer::new() -> Framer {
-  { buffer: "", max_pending: DEFAULT_MAX_PENDING }
+  { buffer: "", max_pending: DEFAULT_MAX_PENDING, }
 }
 
 ///|
@@ -154,7 +154,7 @@ pub fn Framer::new() -> Framer {
 /// 因为再小就装不下一条中等长度的合法报文了。
 pub fn Framer::with_limit(max_pending : Int32) -> Framer {
   let limit = if max_pending < 1024 { 1024 } else { max_pending }
-  { buffer: "", max_pending: limit }
+  { buffer: "", max_pending: limit, }
 }
 
 ///|

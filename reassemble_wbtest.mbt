@@ -176,7 +176,9 @@ test "同名项在分包间重复出现时原样保留" {
   // 每个分包通常都自带 DataTime。重组不做去重，保证可追溯。
   let r = Reassembler::new()
   let _ = r.push(make_split("20240115103000123", "MN01", 2, 1, "DataTime", "1"))
-  let done = r.push(make_split("20240115103000123", "MN01", 2, 2, "DataTime", "2"))
+  let done = r.push(
+    make_split("20240115103000123", "MN01", 2, 2, "DataTime", "2"),
+  )
   match done {
     Complete(area) => {
       assert_eq(area.length(), 2)

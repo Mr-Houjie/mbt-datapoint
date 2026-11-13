@@ -208,8 +208,13 @@ pub fn ErrorStage::label(self : ErrorStage) -> String {
 /// 错误所在的层。
 pub fn DecodeError::stage(self : DecodeError) -> ErrorStage {
   match self {
-    MissingHeader | BadLengthField(_) | Truncated(_, _) | BadCrc(_, _) |
-    BadTail(_) | EmptySegment | TrailingGarbage(_) => FrameLayer
+    MissingHeader
+    | BadLengthField(_)
+    | Truncated(_, _)
+    | BadCrc(_, _)
+    | BadTail(_)
+    | EmptySegment
+    | TrailingGarbage(_) => FrameLayer
     MissingField(_) | DuplicateField(_) | BadField(_) | BadFieldValue(_, _) =>
       SegmentLayer
     BadDataArea(_) => DataAreaLayer

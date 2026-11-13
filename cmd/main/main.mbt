@@ -97,7 +97,9 @@ fn cmd_explain(arg : String) -> Int32 {
               println("")
             }
             first = false
-            println("解析失败（\{error.stage().label()}）: \{error.message()}")
+            println(
+              "解析失败（\{error.stage().label()}）: \{error.message()}",
+            )
             println("原文: \{raw}")
             bad = bad + 1
           }
@@ -105,7 +107,8 @@ fn cmd_explain(arg : String) -> Int32 {
             let n = text.length()
             println("跳过 \{n} 字节噪声")
           }
-          @lib.Overflow(n) => println("丢弃 \{n} 字节超长残留（缓冲区已达上限）")
+          @lib.Overflow(n) =>
+            println("丢弃 \{n} 字节超长残留（缓冲区已达上限）")
         }
       }
       if good == 0 && bad == 0 {
@@ -188,13 +191,17 @@ fn cmd_frames(arg : String) -> Int32 {
           @lib.Bad(error, raw) => {
             index = index + 1
             bad = bad + 1
-            println("\{pad3(index)}  FAIL（\{error.stage().label()}）\{error.message()}")
+            println(
+              "\{pad3(index)}  FAIL（\{error.stage().label()}）\{error.message()}",
+            )
             println("     原文 \{raw}")
           }
           @lib.Noise(text) =>
             println("      SKIP \{text.length()} 字节噪声")
           @lib.Overflow(n) =>
-            println("      DROP \{n} 字节超长残留（缓冲区已达上限）")
+            println(
+              "      DROP \{n} 字节超长残留（缓冲区已达上限）",
+            )
         }
       }
       if bad > 0 {
@@ -231,7 +238,9 @@ fn cmd_pack(arg : String) -> Int32 {
               @lib.NotSplit =>
                 println("跳过 CN=\{frame.segment.cn}：未声明分包")
               @lib.Pending(got, total) =>
-                println("  已收 \{got}/\{total}，缺 \{join_ints(r.missing())}")
+                println(
+                  "  已收 \{got}/\{total}，缺 \{join_ints(r.missing())}",
+                )
               @lib.Conflict(reason) => {
                 println("冲突: \{reason}")
                 bad = bad + 1
@@ -252,7 +261,9 @@ fn cmd_pack(arg : String) -> Int32 {
           }
           @lib.Bad(error, raw) => {
             bad = bad + 1
-            println("解析失败（\{error.stage().label()}）: \{error.message()}")
+            println(
+              "解析失败（\{error.stage().label()}）: \{error.message()}",
+            )
             println("     \{raw}")
           }
           @lib.Noise(_) => ()
@@ -264,7 +275,9 @@ fn cmd_pack(arg : String) -> Int32 {
         return 1
       }
       if r.received() > 0 {
-        println("仍有 \{r.received()}/\{r.total()} 未收齐，缺 \{join_ints(r.missing())}")
+        println(
+          "仍有 \{r.received()}/\{r.total()} 未收齐，缺 \{join_ints(r.missing())}",
+        )
       }
       if r.dropped() > 0 {
         println("因换组丢弃 \{r.dropped()} 个未完成组")

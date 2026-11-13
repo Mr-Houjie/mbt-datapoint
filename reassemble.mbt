@@ -43,7 +43,7 @@ pub(all) struct Reassembler {
 
 ///|
 pub fn Reassembler::new() -> Reassembler {
-  { key: "", total: 0, parts: [], dropped: 0 }
+  { key: "", total: 0, parts: [], dropped: 0, }
 }
 
 ///|
@@ -100,10 +100,7 @@ pub fn Reassembler::reset(self : Reassembler) -> Unit {
 
 ///|
 /// 推入一帧。
-pub fn Reassembler::push(
-  self : Reassembler,
-  frame : Frame,
-) -> ReassembleResult {
+pub fn Reassembler::push(self : Reassembler, frame : Frame) -> ReassembleResult {
   let seg = frame.segment
   if !seg.flag.is_split() {
     return NotSplit
@@ -129,14 +126,16 @@ pub fn Reassembler::push(
     self.key = key
     self.total = total
   } else if self.total != total {
-    return Conflict("同一组内 PNUM 不一致：先前 \{self.total}，本帧 \{total}")
+    return Conflict(
+      "同一组内 PNUM 不一致：先前 \{self.total}，本帧 \{total}",
+    )
   }
   for p in self.parts {
     if p.pno == pno {
       return Conflict("PNO=\{pno} 重复出现")
     }
   }
-  self.parts.push({ pno, cp: seg.cp })
+  self.parts.push({ pno, cp: seg.cp, })
   if self.parts.length() < self.total {
     return Pending(self.parts.length(), self.total)
   }

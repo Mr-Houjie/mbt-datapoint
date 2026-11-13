@@ -115,7 +115,9 @@ fn check_split_group(
   }
   match merged {
     Some(area) => {
-      println("  OK   \{prefix}  \{names.length()} 包 → \{area.length()} 项")
+      println(
+        "  OK   \{prefix}  \{names.length()} 包 → \{area.length()} 项",
+      )
       true
     }
     None => {
