@@ -191,6 +191,136 @@ pub fn DataArea::has(self : DataArea, name : String) -> Bool {
 }
 
 ///|
+/// 取某个字段的值，不存在时返回给定的默认值。
+pub fn DataArea::get_or(
+  self : DataArea,
+  name : String,
+  fallback : String,
+) -> String {
+  match self.get(name) {
+    Some(v) => v
+    None => fallback
+  }
+}
+
+///|
+/// 把字段值当整数读。
+///
+/// 常见于 `RtdInterval`、`Flag` 一类整数字段。返回 `None` 有两种情况：
+/// 字段不存在，或者取值不是整数——包括标准里用 `N` / `U` 表示
+/// 「无有效数据」的那种写法，此时上层应当按缺失处理而不是当成 0。
+pub fn DataArea::get_int(self : DataArea, name : String) -> Int32? {
+  match self.get(name) {
+    Some(v) => parse_int_text(v)
+    None => None
+  }
+}
+
+///|
+/// 把字段值当浮点数读。
+///
+/// 监测值形如 `1.52`、`-3.00`、`0`；无有效数据时现场会写 `N`，此时返回
+/// `None`。不接受科学计数法——标准里的数值类型（`N14.2` 等）没有这种写法，
+/// 放进来只会掩盖「对方发的不是这个字段」的问题。
+pub fn DataArea::get_float(self : DataArea, name : String) -> Double? {
+  match self.get(name) {
+    Some(v) => parse_float_text(v)
+    None => None
+  }
+}
+
+///|
+/// 删除某个字段，返回是否真的删掉了。
+pub fn DataArea::remove(self : DataArea, name : String) -> Bool {
+  let mut i = 0
+  while i < self.items.length() {
+    if self.items[i].name == name {
+      let _ = self.items.remove(i)
+      return true
+    }
+    i = i + 1
+  }
+  false
+}
+
+///|
+/// 解析带符号整数。允许前导 `+` / `-`，不允许小数点。
+fn parse_int_text(text : String) -> Int32? {
+  let cs = trim_chars(chars_of(text))
+  if cs.length() == 0 {
+    return None
+  }
+  let mut i = 0
+  let mut negative = false
+  if cs[0] == '-' {
+    negative = true
+    i = 1
+  } else if cs[0] == '+' {
+    i = 1
+  }
+  if i >= cs.length() {
+    return None
+  }
+  let mut value : Int32 = 0
+  while i < cs.length() {
+    if !is_digit_char(cs[i]) {
+      return None
+    }
+    value = value * 10 + (cs[i].to_int() - 48)
+    i = i + 1
+  }
+  if negative {
+    Some(-value)
+  } else {
+    Some(value)
+  }
+}
+
+///|
+/// 解析十进制小数，形如 `-12.34`、`0`、`.5`、`5.`。
+///
+/// 手写而不是转调标准库的浮点解析：核心库要保持零依赖，而这个格式
+/// （可选符号 + 数字 + 可选小数点 + 数字）用不着通用解析器。
+fn parse_float_text(text : String) -> Double? {
+  let cs = trim_chars(chars_of(text))
+  if cs.length() == 0 {
+    return None
+  }
+  let mut i = 0
+  let mut sign = 1.0
+  if cs[0] == '-' {
+    sign = -1.0
+    i = 1
+  } else if cs[0] == '+' {
+    i = 1
+  }
+  let mut int_part = 0.0
+  let mut digits = 0
+  while i < cs.length() && is_digit_char(cs[i]) {
+    int_part = int_part * 10.0 + (cs[i].to_int() - 48).to_double()
+    i = i + 1
+    digits = digits + 1
+  }
+  let mut frac = 0.0
+  let mut scale = 1.0
+  if i < cs.length() && cs[i] == '.' {
+    i = i + 1
+    while i < cs.length() && is_digit_char(cs[i]) {
+      frac = frac * 10.0 + (cs[i].to_int() - 48).to_double()
+      scale = scale * 10.0
+      i = i + 1
+      digits = digits + 1
+    }
+  }
+  // 一个数字都没有（如 ""、"-"、"."）算解析失败；
+  // 还有剩余字符（如 "1.2.3"、"12a"）也算失败，不做「读到哪算哪」的容错。
+  if digits == 0 || i != cs.length() {
+    return None
+  }
+  Some(sign * (int_part + frac / scale))
+}
+
+///|
 /// 追加或覆盖一个单值字段。
 pub fn DataArea::set(self : DataArea, name : String, value : String) -> Unit {
   self.set_values(name, [value])
