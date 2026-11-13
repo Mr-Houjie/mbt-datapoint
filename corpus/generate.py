@@ -102,6 +102,10 @@ EDGE = {
         "DataTime=20240115103000;a34013-Rtd=1.52;Info=备用通道",
     ),
     "no-password.frame": seg(QN, "31", "1011", None, MN, "5", ""),
+    "cp-in-value.frame": seg(
+        QN, "31", "2011", "123456", MN, "5",
+        "Note=XCP=Y;a34013-Rtd=1.52",
+    ),
     "many-items.frame": seg(
         QN, "31", "2011", "123456", MN, "5",
         ";".join("a%05d-Rtd=%d" % (i, i) for i in range(1, 21)),

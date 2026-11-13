@@ -7,12 +7,30 @@
 // 定位 `CP=`，它之前的部分按 `;` 切字段，它之后的部分整体交给数据区解析。
 
 ///|
+/// 定位数据区字段 `CP` 的起始位置。
+///
+/// 不能简单取第一次出现的 `CP=`：其他字段的取值里也可能含 `CP=`（例如
+/// `Note=XCP=Y`），那样会把字段从中间切断、把合法帧误判为非法。
+/// 因此要求 `CP` 必须处在一个字段的起点——即位于 0 号位置，或紧跟 `;`。
+fn find_cp_field(cs : Array[Char]) -> Int32 {
+  let mut i = 0
+  while i + 3 <= cs.length() {
+    let at_boundary = i == 0 || cs[i - 1] == ';'
+    if at_boundary && cs[i] == 'C' && cs[i + 1] == 'P' && cs[i + 2] == '=' {
+      return i
+    }
+    i = i + 1
+  }
+  -1
+}
+
+///|
 pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
   let cs = trim_chars(chars_of(text))
   if cs.length() == 0 {
     return Err(EmptySegment)
   }
-  let cp_pos = find_seq(cs, "CP=", 0)
+  let cp_pos = find_cp_field(cs)
   let (head_cs, cp_text) = if cp_pos >= 0 {
     (chars_slice(cs, 0, cp_pos), slice_chars(cs, cp_pos + 3, cs.length()))
   } else {

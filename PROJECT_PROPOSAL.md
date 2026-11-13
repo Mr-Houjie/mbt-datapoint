@@ -46,8 +46,8 @@ Rust / Java / Go 生态里有 HJ 212 的实现（如 `hj212-protocol`），但 M
 ### 03 能够运行
 
 - `README.md` 给出安装、解码、流式分帧、构造报文四段可复制运行的示例；
-- `moon test` → 20 个单元测试；
-- `moon run cmd/verify` → 26 条语料用例；
+- `moon test` → 34 个单元测试（含对抗性测试：截断、单字节篡改、超长输入、垃圾输入）；
+- `moon run cmd/verify` → 27 条语料用例；
 - `moon run cmd/main -- explain '<报文>'` 一条命令即可看到逐字段解释。
 
 命令行有 5 个子命令：`explain`（逐字段解释）、`check`（只校验，退出码可判）、`frames`（按 TCP 流分帧）、`encode`（构造报文）、`crc`（算数据段校验码）。

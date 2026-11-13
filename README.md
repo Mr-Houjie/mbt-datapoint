@@ -169,8 +169,8 @@ cmd/verify/      语料自检
 ## 测试
 
 ```bash
-moon test              # 20 个单元测试
-moon run cmd/verify    # 26 个语料用例
+moon test              # 34 个单元测试（含对抗性测试）
+moon run cmd/verify    # 27 个语料用例
 ```
 
 ## 许可
