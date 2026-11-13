@@ -32,10 +32,6 @@ HJ 212 是生态环境部强制性行业标准，全国联网数采仪均按它�
 
 MoonBit 生态的 `unicode-segmentation`、`bidi`、`moonlayout` 解决 Unicode 文本边界与排版，与协议帧解析无功能重叠；Rust / Go 有 HJ 212 实现，参考其 `Frame/Segment/DataArea` 分层方式，但解析逻辑按 HJ 212-2017 / 2025 标准正文重新实现，未移植代码，以免继承他人对标准的误读。
 
-## （6）个人背景与项目匹配度
-
-宁波大学应届毕业生，现从事公司内部系统开发（Django + SQL Server 后端 / Vue3 前端），负责产线数据采集与监控平台——与本项目「设备上报、平台接收」的链路直接对应，熟悉粘包、丢包与脏数据的现场表现。
-
 ## （7）其他补充材料（可选）
 
 仓库 https://github.com/Mr-Houjie/mbt-hj212 ｜ mooncakes https://mooncakes.io/docs/Mr-Houjie/mbt-hj212 ｜ 开发历程 `DEVLOG.md` ｜ 变更记录 `CHANGELOG.md`
