@@ -3,7 +3,7 @@
 // 解析逻辑全部在库包里，这里只做三件事：读输入、调度子命令、把结果打出来。
 
 ///|
-const VERSION : String = "0.1.1"
+const VERSION : String = "0.1.2"
 
 ///|
 fn usage() -> String {

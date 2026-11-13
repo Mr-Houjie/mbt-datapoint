@@ -74,8 +74,7 @@ fn group_prefix(name : String) -> String {
     sb.write_char(c)
   }
   let raw = sb.to_string()
-  let trimmed = raw.trim_end(chars="_").to_string()
-  trimmed
+  raw.trim_end(chars="_").to_owned()
 }
 
 ///|

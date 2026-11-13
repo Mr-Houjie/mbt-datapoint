@@ -45,7 +45,19 @@ match @hj212.Frame::decode(raw) {
 - `Frame::decode` 只管**结构**——包头、长度、CRC、包尾。任何一项不对就拒绝整帧，绝不"尽力而为"地猜。
 - `Segment::validate` 只管**语义**——MN 长度与版本是否匹配、Flag 声明分包却没带 PNUM/PNO 之类。这些不影响解码，只作为提示返回。
 
-`DecodeError::kind()` 给出稳定的错误标识（`"BadCrc"`、`"Truncated"`……），适合写日志或做分支；`message()` 是给人看的中文描述。
+`DecodeError::kind()` 给出稳定的错误标识（`"BadCrc"`、`"Truncated"`……），适合写日志或做分支；`message()` 是给人看的中文描述；`stage()` 说明错误落在哪一层——帧层出错整条必须丢弃，数据段层和数据区层的报文边界是好的，可以单独排查。
+
+### 取数据项
+
+```moonlit
+let cp = frame.segment.cp
+cp.get("a34013-Rtd")            // Some("1.52")
+cp.get_float("a34013-Rtd")      // Some(1.52)
+cp.get_int("RtdInterval")       // Some(30)
+cp.get_or("Info", "（无备注）")  // 缺失时的默认值
+```
+
+`get_float` / `get_int` 在取值是 `N`（标准里表示无有效数据）时返回 `None`，**不会**变成 0——0 是一个合法的监测值，两者不能混。
 
 ### 流式分帧
 
@@ -63,6 +75,28 @@ for chunk in chunks {
 ```
 
 `feed` 返回的是数组，一次喂入可能吐出多条帧。不足一帧的部分留在 `framer.pending()` 里等下一次。
+
+缓冲区有上限（默认 16 KiB）。对端声明了长度却始终补不齐数据时，超限会得到 `Overflow` 事件并清空残留，不会无限攒下去。
+
+### 分包重组
+
+历史数据动辄几十包，`Flag` 的分包位 + `PNUM` / `PNO` 标识分包。`Reassembler` 负责按包号拼回去：
+
+```moonlit
+let r = @hj212.Reassembler::new()
+for frame in frames {
+  match r.push(frame) {
+    @hj212.NotSplit        => ()                  // 不是分包帧
+    @hj212.Pending(got, n) => println("\{got}/\{n}")
+    @hj212.Complete(area)  => save(area)          // 收齐，按包号升序拼接
+    @hj212.Conflict(reason) => log(reason)
+  }
+}
+r.missing()   // 还缺哪些包号
+r.dropped()   // 因换组而丢弃的未完成组数
+```
+
+组键是 `MN` + `CN` + `QN`：同一台设备、同一种命令、同一时刻的多帧才属于同一条逻辑报文。分包协议本身不含重传，丢包只能由上层重新请求，所以 `dropped()` 必须让调用方看得见。
 
 ### 构造报文
 
@@ -94,6 +128,7 @@ println(frame.encode())
 mbt-hj212 explain <报文|文件>     逐字段解释一条报文
 mbt-hj212 check   <报文|文件>     只校验，不合法时退出码 1
 mbt-hj212 frames  <报文|文件>     按 TCP 流分帧，逐条列出
+mbt-hj212 pack    <报文|文件>     把分包帧按包号重组成完整数据区
 mbt-hj212 encode  [选项]          构造一条报文
 mbt-hj212 crc     <数据段>        算数据段的 CRC 与字节长度
 ```
@@ -130,7 +165,8 @@ moon run cmd/verify
 
 1. 合法帧必须能解码，且长度、CRC 与算法一致；
 2. 解码再编码必须与原文件字节相同（往返一致）；
-3. 非法帧必须被拒绝，且**错误类型要与文件名前缀一致**（`BadCrc__xxx.frame` 就必须报 `BadCrc`）。
+3. 非法帧必须被拒绝，且**错误类型要与文件名前缀一致**（`BadCrc__xxx.frame` 就必须报 `BadCrc`）；
+4. `split/` 下同前缀的分包帧必须能重组成一条完整数据区。
 
 第 3 条是这个命令的价值所在。它把"我以为它会报错"变成了可执行断言。开发过程中它抓出了两个真实缺陷——重复字段被静默接受、缺少 `&&` 包装的 `CP` 被当成合法数据区。
 
@@ -151,14 +187,15 @@ moon run cmd/verify
 ## 项目结构
 
 ```
-types.mbt        公共类型：Version、Flag、DecodeError、Segment、Frame
+types.mbt        公共类型：Version、Flag、DecodeError、ErrorStage、Segment、Frame
 text.mbt         字符/字节工具：UTF-8 计数、十六进制、显示宽度对齐
 crc.mbt          CRC16/MODBUS
 field_type.mbt   数据类型表：C4、N5、N14.2、YYYY/MM/DD/hh/mm/ss/zzz
-data_area.mbt    数据区：&& 包装、名称=值、逗号分隔多值
+data_area.mbt    数据区：&& 包装、名称=值、逗号分隔多值、数值访问器
 segment.mbt      数据段：字段切分（先定位 CP=）、序列化、语义校验
 time.mbt         QN 时间戳
 frame.mbt        帧编解码 + 流式分帧器
+reassemble.mbt   分包重组
 commands.mbt     命令码表（表 9）
 explain.mbt      逐字段解释，供 CLI 使用
 corpus/          语料与生成脚本
@@ -169,8 +206,8 @@ cmd/verify/      语料自检
 ## 测试
 
 ```bash
-moon test              # 34 个单元测试（含对抗性测试）
-moon run cmd/verify    # 27 个语料用例
+moon test              # 59 个单元测试（含对抗性测试）
+moon run cmd/verify    # 29 个语料用例（含 2 组分包重组）
 ```
 
 ## 开发历程
