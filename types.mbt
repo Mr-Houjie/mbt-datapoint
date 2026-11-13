@@ -179,6 +179,54 @@ pub fn DecodeError::message(self : DecodeError) -> String {
 }
 
 ///|
+/// 错误发生在哪一层。
+///
+/// 分层不是为了分类好看，而是因为三层的处置方式完全不同：
+/// 帧层出错说明字节流已经不可信，这条报文必须整条丢弃；
+/// 数据段层出错说明帧的边界是对的、字段内容有问题；
+/// 数据区层出错说明字段都在，只是 `CP` 里面的结构不对。
+/// 网关通常只关心第一层，数据中心三层都要记。
+pub(all) enum ErrorStage {
+  /// 帧结构：包头、长度字段、CRC、包尾
+  FrameLayer
+  /// 数据段字段：缺失、重复、无 `=`、取值非法
+  SegmentLayer
+  /// 数据区：`&&` 包装、字段名、项结构
+  DataAreaLayer
+}
+
+///|
+pub fn ErrorStage::label(self : ErrorStage) -> String {
+  match self {
+    FrameLayer => "帧层"
+    SegmentLayer => "数据段层"
+    DataAreaLayer => "数据区层"
+  }
+}
+
+///|
+/// 错误所在的层。
+pub fn DecodeError::stage(self : DecodeError) -> ErrorStage {
+  match self {
+    MissingHeader | BadLengthField(_) | Truncated(_, _) | BadCrc(_, _) |
+    BadTail(_) | EmptySegment | TrailingGarbage(_) => FrameLayer
+    MissingField(_) | DuplicateField(_) | BadField(_) | BadFieldValue(_, _) =>
+      SegmentLayer
+    BadDataArea(_) => DataAreaLayer
+  }
+}
+
+///|
+/// 是否为帧层错误。
+///
+/// 帧层出错意味着连「这条报文到哪里结束」都不可信，因此不能继续复用
+/// 这条报文里的任何字段；其余两层的报文边界是好的，字段或数据区可以
+/// 单独排查。
+pub fn DecodeError::is_structural(self : DecodeError) -> Bool {
+  self.stage() is FrameLayer
+}
+
+///|
 /// 把不可见字符渲染成可读形式，用于错误信息。
 fn describe_invisible(s : String) -> String {
   if s == "" {
