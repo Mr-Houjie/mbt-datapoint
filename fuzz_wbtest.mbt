@@ -75,6 +75,78 @@ test "结构骨架正确但内容是垃圾" {
 }
 
 ///|
+test "不含包头的脏流不会留在缓冲区里" {
+  // 找不到 "##" 的字节会作为 Noise 立刻抛出，缓冲区保持为空。
+  // 这条钉住「脏流不堆积」这个性质，避免以后改成分帧器自己攒着。
+  let framer = Framer::new()
+  let junk = "0123456789abcdef".repeat(64)
+  let mut round = 0
+  while round < 20 {
+    let _ = framer.feed(junk)
+    assert_eq(framer.pending(), 0)
+    round = round + 1
+  }
+}
+
+///|
+test "声明长度却补不齐时缓冲区被上限截断" {
+  // 对端说数据段有 9999 字节，实际只发了一部分。分帧器必须等，
+  // 于是这部分会停留在缓冲区里——这正是需要 max_pending 的情形。
+  let framer = Framer::with_limit(2048)
+  assert_eq(framer.limit(), 2048)
+  let fake = "##9999" + "a".repeat(4000)
+  let mut overflow = 0
+  for e in framer.feed(fake) {
+    match e {
+      Overflow(_) => overflow = overflow + 1
+      _ => ()
+    }
+  }
+  assert_eq(overflow, 1)
+  // 超限后缓冲区被清空，不是继续攒着
+  assert_eq(framer.pending(), 0)
+}
+
+///|
+test "默认上限足以容纳最长合法报文" {
+  // 数据段上限 9999 字节，一帧最长 10011 字节，默认 16 KiB 必须装得下，
+  // 否则正常报文会被误判成需要丢弃的超长残留。
+  let framer = Framer::new()
+  assert_true(framer.limit() > 10011)
+}
+
+///|
+test "上限被抬高到 1024，避免装不下合法报文" {
+  let framer = Framer::with_limit(1)
+  assert_eq(framer.limit(), 1024)
+}
+
+///|
+test "reset 清空残留并返回丢弃字节数" {
+  let framer = Framer::new()
+  let _ = framer.feed("##01")
+  let before = framer.pending()
+  assert_true(before > 0)
+  assert_eq(framer.reset(), before)
+  assert_eq(framer.pending(), 0)
+}
+
+///|
+test "缓冲区丢弃后仍能正常解帧" {
+  // 溢出清空不能把分帧器弄坏：之后喂一条完整帧仍要能解出来。
+  let framer = Framer::with_limit(1024)
+  let _ = framer.feed("x".repeat(4096))
+  let mut good = 0
+  for e in framer.feed(SAMPLE_FRAME) {
+    match e {
+      Good(_) => good = good + 1
+      _ => ()
+    }
+  }
+  assert_eq(good, 1)
+}
+
+///|
 test "重复包头与空输入不崩溃" {
   must_not_crash("")
   must_not_crash("##")

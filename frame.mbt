@@ -116,7 +116,16 @@ pub(all) enum FrameEvent {
   Bad(DecodeError, String)
   /// 不是报文的字节，属于噪声（半包残片、日志前缀等）
   Noise(String)
+  /// 缓冲区里堆积的超长残留被丢弃，附带丢弃的字节数
+  Overflow(Int32)
 }
+
+///|
+/// 分帧缓冲区默认上限，单位字节。
+///
+/// 长度字段是 4 位十进制，数据段最多 9999 字节，加包头（2）、长度（4）、
+/// CRC（4）、包尾（2）后一帧最多 10011 字节。取 16 KiB 留出余量。
+const DEFAULT_MAX_PENDING : Int32 = 16384
 
 ///|
 /// 增量分帧器。
@@ -124,19 +133,51 @@ pub(all) enum FrameEvent {
 /// 现场设备按 TCP 流发送，一次 `read` 可能拿到半条报文，也可能拿到三条半。
 /// 分帧器负责在任意切分点保持状态：喂进去一段文本，吐出这段文本里能确认的
 /// 全部事件，剩下的留在缓冲区里等下一段。
+///
+/// 关于缓冲区上限：不含 `##` 的字节会立刻作为 `Noise` 抛出、不留在缓冲区，
+/// 所以脏流本身撑不爆它。会堆积的是另一种情形——对端声明了长度却始终补不齐
+/// 数据（例如 `##9999` 之后只发了几个字节），缓冲区会一直等到声明长度。
+/// 长度字段上限 9999，理论上界约 10 KB；`max_pending` 是把这件事写成显式
+/// 契约，超限即丢弃并抛出 `Overflow`，避免逻辑改动后悄悄退化成无界缓存。
 pub(all) struct Framer {
   mut buffer : String
+  max_pending : Int32
 }
 
 ///|
 pub fn Framer::new() -> Framer {
-  { buffer: "", }
+  { buffer: "", max_pending: DEFAULT_MAX_PENDING }
+}
+
+///|
+/// 指定缓冲区上限（字节）。小于 1024 会被抬到 1024，
+/// 因为再小就装不下一条中等长度的合法报文了。
+pub fn Framer::with_limit(max_pending : Int32) -> Framer {
+  let limit = if max_pending < 1024 { 1024 } else { max_pending }
+  { buffer: "", max_pending: limit }
+}
+
+///|
+/// 缓冲区上限。
+pub fn Framer::limit(self : Framer) -> Int32 {
+  self.max_pending
 }
 
 ///|
 /// 缓冲区里尚未成帧的字节数。
 pub fn Framer::pending(self : Framer) -> Int32 {
   utf8_len(self.buffer)
+}
+
+///|
+/// 主动清空缓冲区里无法成帧的残留，返回丢弃的字节数。
+///
+/// 调用方发现 `pending()` 长期不下降时可以调用，例如在连接空闲超时、
+/// 或者已经判定对端不是 HJ 212 设备时。
+pub fn Framer::reset(self : Framer) -> Int32 {
+  let dropped = utf8_len(self.buffer)
+  self.buffer = ""
+  dropped
 }
 
 ///|
@@ -237,6 +278,13 @@ pub fn Framer::feed(self : Framer, chunk : String) -> Array[FrameEvent] {
     }
   }
   self.buffer = slice_chars(cs, cursor, cs.length())
+  // 剩下的都是拼不成帧的残片。超过上限说明对端发的不是 HJ 212（或者链路
+  // 已经错位），继续攒只会吃内存，直接丢弃并告知调用方。
+  let pending = utf8_len(self.buffer)
+  if pending > self.max_pending {
+    events.push(Overflow(pending))
+    self.buffer = ""
+  }
   events
 }
 

@@ -102,6 +102,7 @@ fn cmd_explain(arg : String) -> Int32 {
             let n = text.length()
             println("跳过 \{n} 字节噪声")
           }
+          @lib.Overflow(n) => println("丢弃 \{n} 字节超长残留（缓冲区已达上限）")
         }
       }
       if good == 0 && bad == 0 {
@@ -140,6 +141,7 @@ fn cmd_check(arg : String) -> Int32 {
             bad = bad + 1
           }
           @lib.Noise(_) => ()
+          @lib.Overflow(_) => ()
         }
       }
       if good == 0 && bad == 0 {
@@ -188,6 +190,8 @@ fn cmd_frames(arg : String) -> Int32 {
           }
           @lib.Noise(text) =>
             println("      SKIP \{text.length()} 字节噪声")
+          @lib.Overflow(n) =>
+            println("      DROP \{n} 字节超长残留（缓冲区已达上限）")
         }
       }
       if bad > 0 {
