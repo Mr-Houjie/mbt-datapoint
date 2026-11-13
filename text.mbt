@@ -287,7 +287,7 @@ fn is_wide_codepoint(cp : Int32) -> Bool {
 
 ///|
 /// 按显示宽度右补空格。
-fn pad_display(s : String, width : Int32) -> String {
+pub fn pad_display(s : String, width : Int32) -> String {
   let w = display_width(s)
   if w >= width {
     return s

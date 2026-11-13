@@ -19,6 +19,9 @@ fn usage() -> String {
   s.write_string(
     "  mbt-hj212 frames <报文|文件>      按 TCP 流分帧，逐条列出\n",
   )
+  s.write_string(
+    "  mbt-hj212 pack <报文|文件>        把分包帧按包号重组成完整数据区\n",
+  )
   s.write_string("  mbt-hj212 encode [选项]           构造一条报文\n")
   s.write_string(
     "  mbt-hj212 crc <数据段>            算数据段的 CRC 与字节长度\n\n",
@@ -94,7 +97,7 @@ fn cmd_explain(arg : String) -> Int32 {
               println("")
             }
             first = false
-            println("解析失败: \{error.message()}")
+            println("解析失败（\{error.stage().label()}）: \{error.message()}")
             println("原文: \{raw}")
             bad = bad + 1
           }
@@ -136,7 +139,7 @@ fn cmd_check(arg : String) -> Int32 {
             good = good + 1
           }
           @lib.Bad(error, raw) => {
-            println("FAIL \{error.message()}")
+            println("FAIL（\{error.stage().label()}）\{error.message()}")
             println("     \{raw}")
             bad = bad + 1
           }
@@ -185,7 +188,7 @@ fn cmd_frames(arg : String) -> Int32 {
           @lib.Bad(error, raw) => {
             index = index + 1
             bad = bad + 1
-            println("\{pad3(index)}  FAIL \{error.message()}")
+            println("\{pad3(index)}  FAIL（\{error.stage().label()}）\{error.message()}")
             println("     原文 \{raw}")
           }
           @lib.Noise(text) =>
@@ -201,6 +204,109 @@ fn cmd_frames(arg : String) -> Int32 {
       }
     }
   }
+}
+
+///|
+/// 把一组分包帧按包号重组成完整数据区。
+///
+/// 输入里混着非分包帧是常态（同一段日志里既有实时数据又有历史数据），
+/// 遇到就跳过并说明原因，不算错误。
+fn cmd_pack(arg : String) -> Int32 {
+  match read_input(arg) {
+    Err(message) => {
+      println("错误: \{message}")
+      2
+    }
+    Ok(text) => {
+      let events = @lib.decode_all(normalize_input(text))
+      let r = @lib.Reassembler::new()
+      let mut frames = 0
+      let mut bad = 0
+      let mut done = 0
+      for event in events {
+        match event {
+          @lib.Good(frame) => {
+            frames = frames + 1
+            match r.push(frame) {
+              @lib.NotSplit =>
+                println("跳过 CN=\{frame.segment.cn}：未声明分包")
+              @lib.Pending(got, total) =>
+                println("  已收 \{got}/\{total}，缺 \{join_ints(r.missing())}")
+              @lib.Conflict(reason) => {
+                println("冲突: \{reason}")
+                bad = bad + 1
+              }
+              @lib.Complete(area) => {
+                done = done + 1
+                println("重组完成，共 \{area.length()} 项：")
+                let mut i = 0
+                while i < area.items.length() {
+                  let item = area.items[i]
+                  println(
+                    "  \{@lib.pad_display(item.name, 18)}\{join_texts(item.values)}",
+                  )
+                  i = i + 1
+                }
+              }
+            }
+          }
+          @lib.Bad(error, raw) => {
+            bad = bad + 1
+            println("解析失败（\{error.stage().label()}）: \{error.message()}")
+            println("     \{raw}")
+          }
+          @lib.Noise(_) => ()
+          @lib.Overflow(n) => println("丢弃 \{n} 字节超长残留")
+        }
+      }
+      if frames == 0 {
+        println("没有找到 HJ 212 报文")
+        return 1
+      }
+      if r.received() > 0 {
+        println("仍有 \{r.received()}/\{r.total()} 未收齐，缺 \{join_ints(r.missing())}")
+      }
+      if r.dropped() > 0 {
+        println("因换组丢弃 \{r.dropped()} 个未完成组")
+      }
+      if bad > 0 || (done == 0 && r.received() > 0) {
+        1
+      } else {
+        0
+      }
+    }
+  }
+}
+
+///|
+fn join_ints(values : Array[Int32]) -> String {
+  if values.length() == 0 {
+    return "（无）"
+  }
+  let sb = StringBuilder()
+  let mut i = 0
+  while i < values.length() {
+    if i > 0 {
+      sb.write_string(", ")
+    }
+    sb.write_string(values[i].to_string())
+    i = i + 1
+  }
+  sb.to_string()
+}
+
+///|
+fn join_texts(values : Array[String]) -> String {
+  let sb = StringBuilder()
+  let mut i = 0
+  while i < values.length() {
+    if i > 0 {
+      sb.write_string(", ")
+    }
+    sb.write_string(values[i])
+    i = i + 1
+  }
+  sb.to_string()
 }
 
 ///|
@@ -379,6 +485,13 @@ fn main {
         @sys.exit(cmd_frames(rest[0]))
       }
     "encode" => @sys.exit(cmd_encode(rest))
+    "pack" =>
+      if rest.length() == 0 {
+        println("错误: pack 需要含分包帧的报文或文件")
+        @sys.exit(2)
+      } else {
+        @sys.exit(cmd_pack(rest[0]))
+      }
     "crc" =>
       if rest.length() == 0 {
         println(
