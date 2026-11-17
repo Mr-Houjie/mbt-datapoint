@@ -2,6 +2,56 @@
 
 版本号遵循语义化版本：`0.x` 阶段允许在次版本号里加入新 API。
 
+## 0.2.0
+
+补上「报文解开之后」那一段：数据模型、规则校验、多格式导出、端到端管道。
+HJ 212 从此只是本模块的一个适配器，其余部分离开环保场景照样能用。
+
+四个新模块都不引用 HJ 212 的任何字段定义。
+
+**`record.mbt` — 协议无关数据模型**
+- 新增 `Point`（时间 / 来源 / 测量 / 字段）与 `Field`（名称 + 多值）
+- 新增 `Value`：`Num` / `Text` / `Missing`。`Missing` 与 `Num(0)` 严格区分，`N` 与空值一律映射成 `Missing`
+- 新增 `Quality`：`Good` / `Suspect` / `Invalid`，语义问题降级而非丢弃
+- `Point::add` 同名多值追加，不覆盖；`Point::add_area` 直接吃 `DataArea`
+- `Frame::to_point` 是唯一的 HJ 212 适配函数：时间戳优先用 `QN` 解析出的规范形式，解析不了保留原文
+
+**`quality.mbt` — 规则引擎**
+- `Rule`：`Range` / `Required` / `Numeric` / `AllowedText`
+- `RuleSet::check` 返回 `Finding` 数组（级别 + 字段 + 说明），不是布尔值
+- 缺字段时只报一次，不与 `Range` 重复报「越界」
+- `RuleSet::from_text` 支持文本配置，语法错误的行原样报出，不静默忽略
+- `worst` / `count_severity` 汇总
+
+**`sink.mbt` — 多格式导出**
+- `Point::to_json` / `to_csv_row` / `to_influx_line`
+- `to_ndjson` / `to_csv` / `render_all` / `render_line`
+- 手写 JSON 转义（引号、反斜杠、控制字符走 `\u00XX`），保持零依赖
+- CSV 单元格以 `= + - @` 开头时加 `'` 前缀，阻断表格软件公式注入
+- InfluxDB 输出刻意不带时间戳：`QN` 精度只到毫秒，硬转纳秒会制造看起来精确、实际不可信的时间
+
+**`pipeline.mbt` — 端到端管道**
+- `Pipeline::feed` 把分帧 → 解码 → 分包重组 → 转 Point → 规则校验 → 渲染串成一次调用
+- 分包帧收齐后才输出，上层拿到的永远是逻辑完整的一条记录
+- `Stats` 记录帧、拒绝、数据点、问题、错误、溢出、丢弃分包组、待收分片
+- `Pipeline::run` 复用 `feed`，保证批处理与流式口径一致
+
+**CLI**
+- 新增 `convert`：报文 → JSON / NDJSON / CSV / InfluxDB，只写数据到标准输出
+- 新增 `quality`：按规则校验并列出问题清单，有 Error 时退出码 1
+- 新增 `stats`：输出全链路处理统计
+- 三者共用 `--format` / `--columns` / `--rules`
+
+**语料与自检**
+- 新增 `corpus/stream/mixed.stream`：正常帧 + 坏帧 + 分包 + 噪声混在一段流里
+- 新增 `corpus/rules/demo.rules`：8 条规则的现场配置示例
+- 自检从上往下多出两节：整段流的帧数 / 拒绝数 / 数据点数，以及规则配置语法与命中数
+
+**API 调整（0.x 内允许）**
+- `Stats` 与 `Pipeline` 的字段改为包内可见，对外统一走访问器
+- `Stats` 补 `findings` / `overflow` / `dropped_groups` / `pending_parts` 访问器
+- `Value` / `Quality` / `Severity` / `Format` 实现 `Eq` 与 `Debug`
+
 ## 0.1.2
 
 新增功能，全部向后兼容。

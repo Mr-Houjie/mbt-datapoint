@@ -3,7 +3,7 @@
 
 name = "Mr-Houjie/mbt-hj212"
 
-version = "0.1.2"
+version = "0.2.0"
 
 readme = "README.md"
 
@@ -13,17 +13,18 @@ license = "MIT"
 
 keywords = [
   "hj212",
-  "environmental",
-  "pollution-monitoring",
+  "time-series",
+  "data-quality",
   "protocol",
   "codec",
+  "etl",
   "iot",
   "cli",
 ]
 
 preferred_target = "native"
 
-description = "纯 MoonBit 的 HJ 212 污染物在线监控数据传输协议实现：帧编解码、数据区解析、命令层与流式分帧，核心零依赖。"
+description = "HJ 212 报文 → 可入库的时序数据：流式分帧、分包重组、协议无关数据模型、规则校验引擎、JSON/CSV/InfluxDB 导出与端到端管道。核心零依赖。"
 
 // 核心库（根包）不 import 任何外部模块，保持零依赖。
 // 只有 cmd/main 与 cmd/verify 这两个可执行包用到 moonbitlang/x 的 fs/sys。
