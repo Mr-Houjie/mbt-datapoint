@@ -3,12 +3,14 @@
 // 解析逻辑全部在库包里，这里只做三件事：读输入、调度子命令、把结果打出来。
 
 ///|
-const VERSION : String = "0.1.2"
+const VERSION : String = "0.2.0"
 
 ///|
 fn usage() -> String {
   let s = StringBuilder()
-  s.write_string("mbt-hj212 \{VERSION} — HJ 212 报文解析与构造\n\n")
+  s.write_string(
+    "mbt-hj212 \{VERSION} — HJ 212 报文解析、校验与数据转换\n\n",
+  )
   s.write_string("用法:\n")
   s.write_string(
     "  mbt-hj212 explain <报文|文件>     逐字段解释一条报文\n",
@@ -22,9 +24,26 @@ fn usage() -> String {
   s.write_string(
     "  mbt-hj212 pack <报文|文件>        把分包帧按包号重组成完整数据区\n",
   )
+  s.write_string(
+    "  mbt-hj212 convert <报文|文件> [选项]  转成 JSON / NDJSON / CSV / InfluxDB\n",
+  )
+  s.write_string(
+    "  mbt-hj212 quality <报文|文件> [选项]  按规则校验，列出问题清单\n",
+  )
+  s.write_string(
+    "  mbt-hj212 stats <报文|文件> [选项]    输出全链路处理统计\n",
+  )
   s.write_string("  mbt-hj212 encode [选项]           构造一条报文\n")
   s.write_string(
     "  mbt-hj212 crc <数据段>            算数据段的 CRC 与字节长度\n\n",
+  )
+  s.write_string("convert / quality / stats 选项:\n")
+  s.write_string(
+    "  --format <格式>         json | ndjson | csv | influx，默认 ndjson\n",
+  )
+  s.write_string("  --columns <列名>        CSV 字段列，逗号分隔\n")
+  s.write_string(
+    "  --rules <文件>          规则配置文件，每行一条，见 corpus/rules/demo.rules\n\n",
   )
   s.write_string("encode 选项:\n")
   s.write_string("  --cn <4位命令码>        默认 2011\n")
@@ -43,7 +62,9 @@ fn usage() -> String {
   s.write_string("  --pnum <总包数> --pno <包号>\n\n")
   s.write_string("退出码:\n")
   s.write_string("  0  成功\n")
-  s.write_string("  1  报文不合法\n")
+  s.write_string(
+    "  1  报文不合法，或校验发现问题（quality 的 Error 级）\n",
+  )
   s.write_string("  2  用法错误或读写失败\n")
   s.to_string()
 }
@@ -498,6 +519,9 @@ fn main {
         @sys.exit(cmd_frames(rest[0]))
       }
     "encode" => @sys.exit(cmd_encode(rest))
+    "convert" => @sys.exit(cmd_convert(rest))
+    "quality" => @sys.exit(cmd_quality(rest))
+    "stats" => @sys.exit(cmd_stats(rest))
     "pack" =>
       if rest.length() == 0 {
         println("错误: pack 需要含分包帧的报文或文件")
