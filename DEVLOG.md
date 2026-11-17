@@ -59,7 +59,13 @@ HJ 212 帧 ──to_point──┐
 
 一是**类型判断的位置**。最初的写法是先看字段名里有没有 `-Flag`、`Info` 这类后缀，再决定当文本还是当数值。这等于把行业字典编进了通用层——换个场景就不成立。改成只看值本身：能解析成数字就是 `Num`，空串就是 `Missing`，其余原样 `Text`。`a34013-Flag=N` 因此留成文本 `"N"`，而不会被误当成"没有数据"。
 
-二是**给新类型加 `Eq`/`Debug` 时撞上语言的新规矩**。测试里想写 `assert_eq(point.quality, Suspect)`，编译不过——自定义 enum 不 `derive` 就没有 `Eq`，而 `assert_eq` 还需要 `Debug`。加上 `derive(Eq, Debug)` 之后，`moon check --deny-warn` 又报 `implicit_impl_as_method`：这个版本不认隐式提升到方法位，必须显式写 `pub extend Quality with Eq::{not_equal, equal}`。一共 8 行样板，换来的是这四种枚举在本包外也能比较、能打印。
+二是**给新类型加 `Eq` 时撞上语言的语法迁移**。测试里想写 `assert_eq(point.quality, Suspect)`，编译不过——自定义 enum 不 `derive` 就没有 `Eq`。加上 `derive(Eq, Debug)` 之后，本机 `--deny-warn` 又报 `implicit_impl_as_method`，要求显式写 `pub extend Quality with Eq::{not_equal, equal}`。加完本机全绿，推上去 CI 却红了。
+
+红的原因是 CI 每次都装最新工具链，而它把 `} derive(Eq, Debug)` 判为 `deprecated_syntax`——`--deny-warn` 下弃用即失败。它建议的新写法是 `#derive(...)` 属性，可当前稳定版根本不认识这个属性，直接报 `unknown attribute`。**两条语法互斥，没有交集。**
+
+最后的解法是最笨的那个：都不用了。给四个枚举各手写一份 `impl Eq`，`pub extend` 留着（旧编译器要它消告警），测试里的 `assert_eq` 改成 `assert_true(a == b)`。多写二十行，换来新旧两条工具链都能在 `--deny-warn` 下编译。
+
+这件事值得记下来，因为它暴露了一个容易被忽略的成本：**依赖最新工具链的 CI，会让"昨天还能过"的代码今天变红，而原因和代码本身无关。**排查过程也不体面——Actions 的日志要仓库权限才能下载，最后是在 CI 里加了一步把编译器输出打成 annotation，才在提交页面上看到那行 `deprecated_syntax`。诊断代码留在了工作流里，下次再遇到同类问题能省半小时。
 
 ## 三、这个协议难在哪：三处静默失败
 

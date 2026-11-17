@@ -28,6 +28,8 @@ jobs:
           moon version --all
           moon update
 
+      # Actions 的完整日志要仓库权限才能下载，失败时把编译器输出的头几百字节
+      # 打成 annotation，提交页面上直接可见，定位问题不用登录。
       - name: Check (type / syntax, warnings are errors)
         run: |
           set -o pipefail

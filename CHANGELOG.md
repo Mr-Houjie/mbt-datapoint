@@ -50,7 +50,10 @@ HJ 212 从此只是本模块的一个适配器，其余部分离开环保场景�
 **API 调整（0.x 内允许）**
 - `Stats` 与 `Pipeline` 的字段改为包内可见，对外统一走访问器
 - `Stats` 补 `findings` / `overflow` / `dropped_groups` / `pending_parts` 访问器
-- `Value` / `Quality` / `Severity` / `Format` 实现 `Eq` 与 `Debug`
+- `Value` / `Quality` / `Severity` / `Format` 实现 `Eq`（手写，不用 `derive`）
+
+**兼容性**
+- 不使用 `derive(Eq, Debug)`：这个写法已进入弃用流程，新写法 `#derive(...)` 又不被当前稳定版识别，两条语法互斥。手写 `Eq` 加 `pub extend`，新旧两条工具链都能在 `--deny-warn` 下编译通过。
 
 ## 0.1.2
 
