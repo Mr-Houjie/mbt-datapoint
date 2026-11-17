@@ -1,18 +1,53 @@
 # mbt-hj212
 
-HJ 212 污染物在线监控数据传输协议的 MoonBit 实现：帧编解码、数据区解析、命令层、流式分帧，附带一个能把一条原始报文摊开成字段表的命令行工具。
+把 HJ 212 报文变成能直接入库的时序数据。
+
+```
+##0140QN=...;CP=&&DataTime=...;a34013-Rtd=1.52&&3647\r\n
+        │
+        ├ 分帧 ── TCP 字节流 → 一条条完整帧（跨 read 保持状态）
+        ├ 解码 ── 长度 / CRC / 包尾校验，分包按包号重组
+        ├ 数据点 ── 帧 → Point{时间, 来源, 测量, 字段}，与协议无关
+        ├ 校验 ── 规则引擎，输出「哪个字段、为什么」而不是一个布尔值
+        └ 导出 ── JSON / NDJSON / CSV / InfluxDB line protocol
+```
 
 核心库零依赖，只用 MoonBit 标准库。
 
-```
-##0140QN=20240115103000123;ST=31;CN=2011;PW=123456;MN=0100...DC0;Flag=5;CP=&&DataTime=...;a34013-Rtd=1.52&&3647\r\n
-└┬─┘└──┘└──────────────────── 数据段 ────────────────────┘└──┘└─┘
-包头 长度                                                 CRC  包尾
+## 这个库分两层，只有一层跟环保有关
+
+协议细节在 HJ 212 上：长度字段按 UTF-8 字节算、`CP` 取值自己也用 `;` 分隔、TCP 粘包半包。这些坑必须踩对，踩错了不会报错，只会静默丢数据。
+
+但报文解开之后要做的事，跟环保没有关系。`record.mbt` / `quality.mbt` / `sink.mbt` / `pipeline.mbt` 这四个模块不认识 HJ 212 的任何字段：
+
+| 模块 | 内容 | 谁能用 |
+| --- | --- | --- |
+| `record.mbt` | `Point` / `Field` / `Value` / `Quality`，缺失与零严格分开 | 任何时序采集：传感器、日志事件、指标 |
+| `quality.mbt` | 规则引擎：量程、必填、数值类型、取值白名单，含文本规则配置 | 任何需要判断「这个数可信吗」的场景 |
+| `sink.mbt` | JSON / NDJSON / CSV / InfluxDB line protocol，手写转义 | 任何要把数据交给下游系统的场景 |
+| `pipeline.mbt` | 上面几步串成一次 `feed`，附全程计数 | 抓包回放、离线批处理、在线流处理 |
+
+`Frame::to_point()` 是唯一的适配函数——把一条 HJ 212 帧翻译成通用的 `Point`。换一种协议，只需要再写一个这样的函数，后面的校验与导出原样复用。
+
+```moonbit
+let p = @hj212.Point::new("2024-01-15T10:30:00", "sensor-01", "cpu")
+p.add("load", @hj212.Num(0.5))
+p.add("status", @hj212.Text("N"))
+p.add("spare", @hj212.Missing)     // 缺失，不是 0
+
+let (rules, _) = @hj212.RuleSet::from_text(
+  "range load 0 1\nrequired status\nallowed status N,T,B,D\n",
+)
+for f in rules.check(p) {
+  println(f.text())                // [warning] status: 未登记的取值 "Z"
+}
+println(p.to_json())               // {"timestamp":...,"fields":{"load":[0.5],...}}
+println(p.to_influx_line())        // cpu,source=sensor-01 load=0.5,status="N"
 ```
 
 ## 为什么值得单独做一个
 
-HJ 212 是国内污染源在线监测联网的强制标准，全国每一台数采仪都在按它往生态环境部门的平台报送数据。协议本身不难，难的是它有三处地方特别容易实现错，而且错了不会报错，只会静默丢数据：
+HJ 212 是国内污染源在线监测联网的强制标准，全国每一台数采仪都在按它往生态环境部门的平台报送数据。协议本身不难，难的是它有三处地方特别容易实现错：
 
 1. **长度字段按 UTF-8 字节数算，不是字符数。** 数据区里出现一个中文（比如 `Info=备用通道`），按字符数算就会少 6 个字节，接收端随之错位到 CRC，整帧被丢。这个库里长度、CRC 共用同一套字节计数。
 2. **`CP` 的取值自己也用 `;` 分隔字段。** 把数据段直接按 `;` 切开再找 `CP`，数据区会被撕成碎片。必须先定位 `CP=`，之前的按 `;` 切字段，之后的整体交给数据区。
@@ -33,10 +68,10 @@ moon add Mr-Houjie/mbt-hj212
 ```moonbit
 match @hj212.Frame::decode(raw) {
   Ok(frame) => {
-    println(frame.segment.cn)              // "2011"
+    println(frame.segment.cn)                    // "2011"
     println(frame.segment.cp.get("a34013-Rtd"))  // Some("1.52")
   }
-  Err(error) => println(error.message())   // 直接给人看的中文描述
+  Err(error) => println(error.message())         // 直接给人看的中文描述
 }
 ```
 
@@ -58,6 +93,56 @@ cp.get_or("Info", "（无备注）")  // 缺失时的默认值
 ```
 
 `get_float` / `get_int` 在取值是 `N`（标准里表示无有效数据）时返回 `None`，**不会**变成 0——0 是一个合法的监测值，两者不能混。
+
+### 转成数据点
+
+```moonbit
+let point = frame.to_point()
+point.timestamp      // QN 解析成 "2024-01-15 10:30:00.123"，解析不了就保留原文
+point.source         // MN
+point.measurement    // CN
+point.quality        // Good / Suspect / Invalid
+point.number("a34013-Rtd")  // Some(1.52)
+
+point.to_json()          // 一行 JSON
+point.to_csv_row(cols)   // 一行 CSV
+point.to_influx_line()   // 一行 InfluxDB line protocol
+```
+
+三个判断写在这里，都不静默丢数据：
+
+- `N` 与空值映射成 `Value::Missing`，不是 `0`。采集现场最常见的错就是把缺失当 0 入库，之后所有统计被悄悄拉偏。
+- 语义有问题（MN 长度不对、分包声明不一致）降级为 `Suspect`，照样输出；只有整帧一个有效值都没有才标 `Invalid`。
+- 同名多值不覆盖，`Field::values` 保留全部。实时数据里一项多采是常态，只取第一个就丢数据。
+
+### 规则校验
+
+```moonbit
+let (rules, errors) = @hj212.RuleSet::from_text(
+  "range a34013-Rtd 0 500\nrequired DataTime\nallowed a34013-Flag N,T,B,D,F,S\n",
+)
+let findings = rules.check(point)
+for f in findings {
+  println(f.text())    // [error] a34013-Rtd: 数值 812.5 超出允许区间 [0, 500]
+}
+```
+
+输出是问题清单而不是布尔值。缺字段时只报一次「缺少必需字段」，不会再报一遍「越界」——同一个根因报两遍，报告反而看不出根因。文本配置写错的行会被原样报出来，不静默忽略。
+
+### 端到端管道
+
+```moonbit
+let pipe = @hj212.Pipeline::new(rules, @hj212.Ndjson, [])
+for chunk in chunks {
+  for out in pipe.feed(chunk) {
+    save(out.line)           // 已渲染好的一行
+    log(out.findings)        // 这条数据的全部问题
+  }
+}
+println(pipe.stats().text())  // 帧 / 拒绝 / 数据点 / 问题 / 溢出 / 未完成分包组
+```
+
+分包帧不会逐片吐数据点：先送进重组器，收齐后拼成一条完整记录再输出，上层拿到的永远是逻辑完整的一条。
 
 ### 流式分帧
 
@@ -125,15 +210,35 @@ println(frame.encode())
 ## 命令行
 
 ```
-mbt-hj212 explain <报文|文件>     逐字段解释一条报文
-mbt-hj212 check   <报文|文件>     只校验，不合法时退出码 1
-mbt-hj212 frames  <报文|文件>     按 TCP 流分帧，逐条列出
-mbt-hj212 pack    <报文|文件>     把分包帧按包号重组成完整数据区
-mbt-hj212 encode  [选项]          构造一条报文
-mbt-hj212 crc     <数据段>        算数据段的 CRC 与字节长度
+mbt-hj212 explain <报文|文件>            逐字段解释一条报文
+mbt-hj212 check   <报文|文件>            只校验，不合法时退出码 1
+mbt-hj212 frames  <报文|文件>            按 TCP 流分帧，逐条列出
+mbt-hj212 pack    <报文|文件>            把分包帧按包号重组成完整数据区
+mbt-hj212 convert <报文|文件> [选项]     转成 JSON / NDJSON / CSV / InfluxDB
+mbt-hj212 quality <报文|文件> [选项]     按规则校验，列出问题清单
+mbt-hj212 stats   <报文|文件> [选项]     输出全链路处理统计
+mbt-hj212 encode  [选项]                 构造一条报文
+mbt-hj212 crc     <数据段>               算数据段的 CRC 与字节长度
 ```
 
-`explain` 是最好用的一个，它把一条报文摊成表，每一行都标出来源：
+`convert` / `quality` / `stats` 共用 `--format`、`--columns`、`--rules` 三个选项，所以「转换出来的数据」和「校验判定」不会各说各话。
+
+```
+$ mbt-hj212 convert corpus/good/2011__real-time-gas.frame --format csv \
+      --columns DataTime,a34013-Rtd,a34013-Flag
+timestamp,source,measurement,quality,DataTime,a34013-Rtd,a34013-Flag
+2024-01-15 10:30:00.123,010000A8900016F000169DC0,2011,good,20240115103000,1.52,N
+
+$ mbt-hj212 quality corpus/edge/many-items.frame --rules corpus/rules/demo.rules
+2024-01-15 10:30:00.123  010000A8900016F000169DC0  CN=2011  [good]
+    [error] DataTime: 缺少必需字段
+
+数据点 1 · 问题 1（错误 1，警告 0，提示 0）· 解码失败 0
+```
+
+`convert` 只把数据写进标准输出，不掺统计行，方便直接重定向或接管道。`quality` 有 Error 级问题时退出码 1，能直接当 CI 门禁。
+
+`explain` 把一条报文摊成表，每一行都标出来源：
 
 ```
 $ mbt-hj212 explain '##0140QN=20240115103000123;ST=31;CN=2011;PW=123456;MN=010000A8900016F000169DC0;Flag=5;CP=&&DataTime=20240115103000;a34013-Rtd=1.52;a34013-Flag=N&&3647'
@@ -166,7 +271,9 @@ moon run cmd/verify
 1. 合法帧必须能解码，且长度、CRC 与算法一致；
 2. 解码再编码必须与原文件字节相同（往返一致）；
 3. 非法帧必须被拒绝，且**错误类型要与文件名前缀一致**（`BadCrc__xxx.frame` 就必须报 `BadCrc`）；
-4. `split/` 下同前缀的分包帧必须能重组成一条完整数据区。
+4. `split/` 下同前缀的分包帧必须能重组成一条完整数据区；
+5. `stream/` 下混着正常帧、坏帧、分包与噪声的整段流，用管道跑一遍，核对帧数 / 拒绝数 / 数据点数；
+6. `rules/` 下的规则配置必须零语法错误，且对已知有问题的报文必须命中期数量的错误。
 
 第 3 条是这个命令的价值所在。它把"我以为它会报错"变成了可执行断言。开发过程中它抓出了两个真实缺陷——重复字段被静默接受、缺少 `&&` 包装的 `CP` 被当成合法数据区。
 
@@ -182,11 +289,16 @@ moon run cmd/verify
 
 **版本号。** `Flag` 的 V5–V0 位：`000000` 是 HJ/T 212-2005，`000001` 是 HJ 212-2017，`000010` 是 HJ 212-2025。注意 2017 与 2025 两次修订把最后两位的**字母**换过名（2017 写作 D=分包、A=应答，2025 写作 A=分包、D=应答），位权没变。本库只按位权判断，不引用字母。
 
-**没有做的部分。** 监测因子编码表（附录 B，水/气各数百项）没有收录——那是查表数据而不是协议逻辑，塞进库只会让包变大。数据区里的因子名按不透明字符串处理，`DataArea::get("a34013-Rtd")` 照样能用。
+**没有做的部分。** 监测因子编码表（附录 B，水/气各数百项）没有收录——那是查表数据而不是协议逻辑，塞进库只会让包变大。数据区里的因子名按不透明字符串处理，`DataArea::get("a34013-Rtd")` 照样能用。规则引擎也不预置任何行业规则：量程该设多少是现场的事，不是库的事。
 
 ## 项目结构
 
 ```
+record.mbt       协议无关数据模型：Point / Field / Value / Quality
+quality.mbt      规则引擎：量程 / 必填 / 数值类型 / 取值白名单 + 文本配置
+sink.mbt         导出：JSON / NDJSON / CSV / InfluxDB，手写转义
+pipeline.mbt     端到端管道：一次 feed 走完全流程，附计数
+
 types.mbt        公共类型：Version、Flag、DecodeError、ErrorStage、Segment、Frame
 text.mbt         字符/字节工具：UTF-8 计数、十六进制、显示宽度对齐
 crc.mbt          CRC16/MODBUS
@@ -198,21 +310,24 @@ frame.mbt        帧编解码 + 流式分帧器
 reassemble.mbt   分包重组
 commands.mbt     命令码表（表 9）
 explain.mbt      逐字段解释，供 CLI 使用
-corpus/          语料与生成脚本
+corpus/          语料、规则配置、生成脚本
 cmd/main/        命令行
-cmd/verify/      语料自检
+cmd/verify/      语料与管道自检
 ```
+
+前四个文件不 import 任何协议概念，可以单独拿去做别的采集场景。
 
 ## 测试
 
 ```bash
-moon test              # 59 个单元测试（含对抗性测试）
-moon run cmd/verify    # 29 个语料用例（含 2 组分包重组）
+moon test              # 97 个单元测试（含对抗性测试）
+moon run cmd/verify    # 32 个语料用例（含 2 组分包重组、1 段混合流、1 份规则配置）
+moon check --deny-warn # 零告警
 ```
 
 ## 开发历程
 
-选题为什么从文本换行换到 HJ 212、AI 在哪儿帮了倒忙、测试抓出过哪三个真 bug，都记在 [`DEVLOG.md`](DEVLOG.md)。
+选题为什么从文本换行换到 HJ 212、为什么第二次又把重心从「协议解析」挪到「数据管道」、AI 在哪儿帮了倒忙、测试抓出过哪三个真 bug，都记在 [`DEVLOG.md`](DEVLOG.md)。
 
 ## 许可
 
