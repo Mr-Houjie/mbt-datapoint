@@ -30,6 +30,7 @@ jobs:
 
       - name: Check (type / syntax, warnings are errors)
         run: |
+          set -o pipefail
           if moon check --deny-warn 2>&1 | tee /tmp/check.log; then
             exit 0
           fi
