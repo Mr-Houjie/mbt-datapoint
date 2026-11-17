@@ -29,7 +29,13 @@ jobs:
           moon update
 
       - name: Check (type / syntax, warnings are errors)
-        run: moon check --deny-warn
+        run: |
+          if moon check --deny-warn 2>&1 | tee /tmp/check.log; then
+            exit 0
+          fi
+          head -c 900 /tmp/check.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g' > /tmp/msg.txt
+          printf '::error::%s\n' "$(cat /tmp/msg.txt)"
+          exit 1
 
       - name: Test
         run: moon test
