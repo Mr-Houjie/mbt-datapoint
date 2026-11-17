@@ -17,13 +17,22 @@ pub(all) enum Value {
   Text(String)
   /// 缺失 / 无有效数据
   Missing
-} derive(Eq, Debug)
+}
+
+///|
+/// 手写 `Eq` 而不是 `derive`：`derive(...)` 在语言里已经进入弃用流程，
+/// 新写法 `#derive(...)` 又不能被当前稳定版识别，手写一份两边都能编译。
+pub impl Eq for Value with fn equal(self : Value, other : Value) -> Bool {
+  match (self, other) {
+    (Num(a), Num(b)) => a == b
+    (Text(a), Text(b)) => a == b
+    (Missing, Missing) => true
+    _ => false
+  }
+}
 
 ///|
 pub extend Value with Eq::{not_equal, equal}
-
-///|
-pub extend Value with Debug::{to_repr}
 
 ///|
 /// 渲染成可读文本，供日志与 CSV 使用。
@@ -94,13 +103,15 @@ pub(all) enum Quality {
   Suspect
   /// 数据本身不可用（例如没有任何有效字段）
   Invalid
-} derive(Eq, Debug)
+}
+
+///|
+pub impl Eq for Quality with fn equal(self : Quality, other : Quality) -> Bool {
+  self.label() == other.label()
+}
 
 ///|
 pub extend Quality with Eq::{not_equal, equal}
-
-///|
-pub extend Quality with Debug::{to_repr}
 
 ///|
 pub fn Quality::label(self : Quality) -> String {

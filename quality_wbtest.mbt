@@ -97,11 +97,11 @@ test "worst 与 count_severity" {
     { severity: Error, field: "c", message: "", },
     { severity: Error, field: "d", message: "", },
   ]
-  assert_eq(worst(findings), Some(Error))
+  assert_true(worst(findings) == Some(Error))
   assert_eq(count_severity(findings, Error), 2)
   assert_eq(count_severity(findings, Warning), 1)
   assert_eq(count_severity(findings, Info), 1)
-  assert_eq(worst([]), None)
+  assert_true(worst([]) is None)
 }
 
 ///|

@@ -72,13 +72,13 @@ test "数据区里的文本与空值按值本身判定类型" {
       assert_eq(p.number("a34013-Rtd"), Some(1.52))
       // N 是设备状态码，不是「没有值」，原样保留为文本
       match p.field("a34013-Flag") {
-        Some(f) => assert_eq(f.first(), Text("N"))
+        Some(f) => assert_true(f.first() == Text("N"))
         None => fail("a34013-Flag 应当存在")
       }
       assert_true(p.field("Info") is Some(_))
-      assert_eq(p.field("Info").unwrap().first(), Missing)
+      assert_true(p.field("Info").unwrap().first() == Missing)
       match p.field("Note") {
-        Some(f) => assert_eq(f.first(), Text("备用通道"))
+        Some(f) => assert_true(f.first() == Text("备用通道"))
         None => fail("Note 应当存在")
       }
     }
@@ -94,7 +94,7 @@ test "语义有问题的帧降级为 suspect，不是丢弃" {
     Ok(s) => {
       let frame : Frame = { segment: s, }
       let p = frame.to_point()
-      assert_eq(p.quality, Suspect)
+      assert_true(p.quality == Suspect)
       assert_eq(p.number("a"), Some(1.0))
     }
   }
@@ -108,7 +108,7 @@ test "没有任何有效取值时标为 invalid" {
     Err(e) => fail(e.message())
   }
   let p : Frame = { segment: s, }
-  assert_eq(p.to_point().quality, Invalid)
+  assert_true(p.to_point().quality == Invalid)
 }
 
 ///|

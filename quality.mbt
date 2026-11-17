@@ -12,13 +12,15 @@ pub(all) enum Severity {
   Info
   Warning
   Error
-} derive(Eq, Debug)
+}
+
+///|
+pub impl Eq for Severity with fn equal(self : Severity, other : Severity) -> Bool {
+  self.label() == other.label()
+}
 
 ///|
 pub extend Severity with Eq::{not_equal, equal}
-
-///|
-pub extend Severity with Debug::{to_repr}
 
 ///|
 pub fn Severity::label(self : Severity) -> String {

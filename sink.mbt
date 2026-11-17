@@ -14,13 +14,15 @@ pub(all) enum Format {
   Ndjson
   Csv
   Influx
-} derive(Eq, Debug)
+}
+
+///|
+pub impl Eq for Format with fn equal(self : Format, other : Format) -> Bool {
+  self.label() == other.label()
+}
 
 ///|
 pub extend Format with Eq::{not_equal, equal}
-
-///|
-pub extend Format with Debug::{to_repr}
 
 ///|
 pub fn Format::parse(text : String) -> Format? {

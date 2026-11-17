@@ -128,7 +128,7 @@ test "Format 解析与别名" {
   assert_true(Format::parse("json") is Some(_))
   assert_true(Format::parse("JSONL") is Some(_))
   assert_true(Format::parse("lineprotocol") is Some(_))
-  assert_eq(Format::parse("???"), None)
+  assert_true(Format::parse("???") is None)
   assert_eq(Json.label(), "json")
   assert_eq(Ndjson.label(), "ndjson")
   assert_eq(Csv.label(), "csv")
