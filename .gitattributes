@@ -2,3 +2,7 @@
 # 一旦被换行归一化，解码就会报 BadTail。
 *.frame -text
 *.frame binary
+
+# 数据流语料同样是原始字节，混着一行噪声与 0x0D 0x0A 包尾。
+*.stream -text
+*.stream binary

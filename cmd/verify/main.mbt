@@ -167,6 +167,8 @@ fn main {
   let edge_dir = join_path(dir, "edge")
   let split_dir = join_path(dir, "split")
   let bad_dir = join_path(dir, "bad")
+  let stream_dir = join_path(dir, "stream")
+  let rules_dir = join_path(dir, "rules")
 
   if !@fs.path_exists(dir) {
     println("找不到语料目录「\{dir}」")
@@ -240,6 +242,36 @@ fn main {
           )
         }
     }
+  }
+
+  println("")
+  println("数据流  \{stream_dir}")
+  // 期望值：mixed.stream 里 5 条合法帧、1 条 CRC 坏帧、1 组 2 片分包合成 1 条，
+  // 初始还有一行噪声被跳过，所以是 帧 5 / 拒绝 1 / 数据点 4。
+  for name in list_files_ext(stream_dir, ".stream") {
+    total = total + 1
+    if check_stream(stream_dir, name, 5, 1, 4) {
+      passed = passed + 1
+    }
+  }
+
+  println("")
+  println("规则  \{rules_dir}")
+  for name in list_files_ext(rules_dir, ".rules") {
+    total = total + 1
+    // demo.rules 目前 8 条规则：5 个 range、1 个 required、2 个 allowed
+    if check_rules(rules_dir, name, 8) {
+      passed = passed + 1
+    }
+  }
+  total = total + 1
+  if check_rule_hit(
+      join_path(edge_dir, "many-items.frame"),
+      join_path(rules_dir, "demo.rules"),
+      1,
+      1,
+    ) {
+    passed = passed + 1
   }
 
   println("")
