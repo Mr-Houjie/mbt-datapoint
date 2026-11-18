@@ -1,24 +1,20 @@
-# mbt-hj212
+# mbt-datapoint
 
-把 HJ 212 报文变成能直接入库的时序数据。
+设备数据接入与转换：分帧、解码、协议无关数据模型、质量规则、多格式导出。
 
 ```
-##0140QN=...;CP=&&DataTime=...;a34013-Rtd=1.52&&3647\r\n
-        │
-        ├ 分帧 ── TCP 字节流 → 一条条完整帧（跨 read 保持状态）
-        ├ 解码 ── 长度 / CRC / 包尾校验，分包按包号重组
-        ├ 数据点 ── 帧 → Point{时间, 来源, 测量, 字段}，与协议无关
-        ├ 校验 ── 规则引擎，输出「哪个字段、为什么」而不是一个布尔值
-        └ 导出 ── JSON / NDJSON / CSV / InfluxDB line protocol
+raw bytes ─┬─ Framer ── TCP 字节流 → 一条条完整消息（跨 read 保持状态）
+           ├─ Decode ── 结构校验（长度 / CRC / 包尾），分包按包号重组
+           ├─ Point  ── {时间, 来源, 测量, 字段}，与协议无关
+           ├─ Rules  ── 规则引擎，输出「哪个字段、为什么」而不是一个布尔值
+           └─ Sink   ── JSON / NDJSON / CSV / InfluxDB line protocol
 ```
 
-核心库零依赖，只用 MoonBit 标准库。
+核心库零依赖，只用 MoonBit 标准库。**首个 adapter 是 HJ 212** —— 国内污染源在线监测联网的强制国标，全国每一台数采仪都在按它报送数据。选它打头阵不是因为要做环保，而是因为它有公开的标准正文可以拿来做对错依据，且坑足够多（见下文三处静默失败）。
 
-## 这个库分两层，只有一层跟环保有关
+## 两层结构，只有协议层跟具体行业有关
 
-协议细节在 HJ 212 上：长度字段按 UTF-8 字节算、`CP` 取值自己也用 `;` 分隔、TCP 粘包半包。这些坑必须踩对，踩错了不会报错，只会静默丢数据。
-
-但报文解开之后要做的事，跟环保没有关系。`record.mbt` / `quality.mbt` / `sink.mbt` / `pipeline.mbt` 这四个模块不认识 HJ 212 的任何字段：
+`record.mbt` / `quality.mbt` / `sink.mbt` / `pipeline.mbt` 这四个模块不认识 HJ 212 的任何字段：
 
 | 模块 | 内容 | 谁能用 |
 | --- | --- | --- |
@@ -27,15 +23,15 @@
 | `sink.mbt` | JSON / NDJSON / CSV / InfluxDB line protocol，手写转义 | 任何要把数据交给下游系统的场景 |
 | `pipeline.mbt` | 上面几步串成一次 `feed`，附全程计数 | 抓包回放、离线批处理、在线流处理 |
 
-`Frame::to_point()` 是唯一的适配函数——把一条 HJ 212 帧翻译成通用的 `Point`。换一种协议，只需要再写一个这样的函数，后面的校验与导出原样复用。
+`Frame::to_point()` 是唯一的适配函数——把一条 HJ 212 帧翻译成通用的 `Point`。换一种协议（Modbus 采集、自有二进制帧、MQTT 载荷），只需要再写一个这样的函数，后面的校验与导出原样复用。
 
 ```moonbit
-let p = @hj212.Point::new("2024-01-15T10:30:00", "sensor-01", "cpu")
-p.add("load", @hj212.Num(0.5))
-p.add("status", @hj212.Text("N"))
-p.add("spare", @hj212.Missing)     // 缺失，不是 0
+let p = @datapoint.Point::new("2024-01-15T10:30:00", "sensor-01", "cpu")
+p.add("load", @datapoint.Num(0.5))
+p.add("status", @datapoint.Text("N"))
+p.add("spare", @datapoint.Missing)     // 缺失，不是 0
 
-let (rules, _) = @hj212.RuleSet::from_text(
+let (rules, _) = @datapoint.RuleSet::from_text(
   "range load 0 1\nrequired status\nallowed status N,T,B,D\n",
 )
 for f in rules.check(p) {
@@ -45,9 +41,9 @@ println(p.to_json())               // {"timestamp":...,"fields":{"load":[0.5],..
 println(p.to_influx_line())        // cpu,source=sensor-01 load=0.5,status="N"
 ```
 
-## 为什么值得单独做一个
+## 协议层的三处静默失败
 
-HJ 212 是国内污染源在线监测联网的强制标准，全国每一台数采仪都在按它往生态环境部门的平台报送数据。协议本身不难，难的是它有三处地方特别容易实现错：
+HJ 212 报文本身不难，难的是它有三处地方特别容易实现错，而且错了不报错、只是悄悄丢数据：
 
 1. **长度字段按 UTF-8 字节数算，不是字符数。** 数据区里出现一个中文（比如 `Info=备用通道`），按字符数算就会少 6 个字节，接收端随之错位到 CRC，整帧被丢。这个库里长度、CRC 共用同一套字节计数。
 2. **`CP` 的取值自己也用 `;` 分隔字段。** 把数据段直接按 `;` 切开再找 `CP`，数据区会被撕成碎片。必须先定位 `CP=`，之前的按 `;` 切字段，之后的整体交给数据区。
@@ -58,7 +54,7 @@ HJ 212 是国内污染源在线监测联网的强制标准，全国每一台数�
 ## 安装
 
 ```bash
-moon add Mr-Houjie/mbt-hj212
+moon add Mr-Houjie/mbt-datapoint
 ```
 
 ## 用法
@@ -66,7 +62,7 @@ moon add Mr-Houjie/mbt-hj212
 ### 解码一条报文
 
 ```moonbit
-match @hj212.Frame::decode(raw) {
+match @datapoint.Frame::decode(raw) {
   Ok(frame) => {
     println(frame.segment.cn)                    // "2011"
     println(frame.segment.cp.get("a34013-Rtd"))  // Some("1.52")
@@ -118,7 +114,7 @@ point.to_influx_line()   // 一行 InfluxDB line protocol
 ### 规则校验
 
 ```moonbit
-let (rules, errors) = @hj212.RuleSet::from_text(
+let (rules, errors) = @datapoint.RuleSet::from_text(
   "range a34013-Rtd 0 500\nrequired DataTime\nallowed a34013-Flag N,T,B,D,F,S\n",
 )
 let findings = rules.check(point)
@@ -132,7 +128,7 @@ for f in findings {
 ### 端到端管道
 
 ```moonbit
-let pipe = @hj212.Pipeline::new(rules, @hj212.Ndjson, [])
+let pipe = @datapoint.Pipeline::new(rules, @datapoint.Ndjson, [])
 for chunk in chunks {
   for out in pipe.feed(chunk) {
     save(out.line)           // 已渲染好的一行
@@ -147,13 +143,13 @@ println(pipe.stats().text())  // 帧 / 拒绝 / 数据点 / 问题 / 溢出 / �
 ### 流式分帧
 
 ```moonbit
-let framer = @hj212.Framer::new()
+let framer = @datapoint.Framer::new()
 for chunk in chunks {
   for event in framer.feed(chunk) {
     match event {
-      @hj212.Good(frame) => handle(frame)
-      @hj212.Bad(error, raw) => log(error, raw)
-      @hj212.Noise(text) => ()          // 日志前缀、半包残片
+      @datapoint.Good(frame) => handle(frame)
+      @datapoint.Bad(error, raw) => log(error, raw)
+      @datapoint.Noise(text) => ()          // 日志前缀、半包残片
     }
   }
 }
@@ -168,13 +164,13 @@ for chunk in chunks {
 历史数据动辄几十包，`Flag` 的分包位 + `PNUM` / `PNO` 标识分包。`Reassembler` 负责按包号拼回去：
 
 ```moonlit
-let r = @hj212.Reassembler::new()
+let r = @datapoint.Reassembler::new()
 for frame in frames {
   match r.push(frame) {
-    @hj212.NotSplit        => ()                  // 不是分包帧
-    @hj212.Pending(got, n) => println("\{got}/\{n}")
-    @hj212.Complete(area)  => save(area)          // 收齐，按包号升序拼接
-    @hj212.Conflict(reason) => log(reason)
+    @datapoint.NotSplit        => ()                  // 不是分包帧
+    @datapoint.Pending(got, n) => println("\{got}/\{n}")
+    @datapoint.Complete(area)  => save(area)          // 收齐，按包号升序拼接
+    @datapoint.Conflict(reason) => log(reason)
   }
 }
 r.missing()   // 还缺哪些包号
@@ -186,17 +182,17 @@ r.dropped()   // 因换组而丢弃的未完成组数
 ### 构造报文
 
 ```moonbit
-let frame : @hj212.Frame = {
+let frame : @datapoint.Frame = {
   segment: {
     qn: "20240115103000123",
     st: "31",
     cn: "2011",
     pw: "123456",
     mn: "010000A8900016F000169DC0",
-    flag: @hj212.Flag::new(@hj212.V2017, false, true),
+    flag: @datapoint.Flag::new(@datapoint.V2017, false, true),
     pnum: None,
     pno: None,
-    cp: @hj212.DataArea::new()
+    cp: @datapoint.DataArea::new()
       ..set("DataTime", "20240115103000")
       ..set("a34013-Rtd", "1.52"),
     extra: [],
@@ -210,26 +206,26 @@ println(frame.encode())
 ## 命令行
 
 ```
-mbt-hj212 explain <报文|文件>            逐字段解释一条报文
-mbt-hj212 check   <报文|文件>            只校验，不合法时退出码 1
-mbt-hj212 frames  <报文|文件>            按 TCP 流分帧，逐条列出
-mbt-hj212 pack    <报文|文件>            把分包帧按包号重组成完整数据区
-mbt-hj212 convert <报文|文件> [选项]     转成 JSON / NDJSON / CSV / InfluxDB
-mbt-hj212 quality <报文|文件> [选项]     按规则校验，列出问题清单
-mbt-hj212 stats   <报文|文件> [选项]     输出全链路处理统计
-mbt-hj212 encode  [选项]                 构造一条报文
-mbt-hj212 crc     <数据段>               算数据段的 CRC 与字节长度
+mbt-datapoint explain <报文|文件>            逐字段解释一条报文
+mbt-datapoint check   <报文|文件>            只校验，不合法时退出码 1
+mbt-datapoint frames  <报文|文件>            按 TCP 流分帧，逐条列出
+mbt-datapoint pack    <报文|文件>            把分包帧按包号重组成完整数据区
+mbt-datapoint convert <报文|文件> [选项]     转成 JSON / NDJSON / CSV / InfluxDB
+mbt-datapoint quality <报文|文件> [选项]     按规则校验，列出问题清单
+mbt-datapoint stats   <报文|文件> [选项]     输出全链路处理统计
+mbt-datapoint encode  [选项]                 构造一条报文
+mbt-datapoint crc     <数据段>               算数据段的 CRC 与字节长度
 ```
 
 `convert` / `quality` / `stats` 共用 `--format`、`--columns`、`--rules` 三个选项，所以「转换出来的数据」和「校验判定」不会各说各话。
 
 ```
-$ mbt-hj212 convert corpus/good/2011__real-time-gas.frame --format csv \
+$ mbt-datapoint convert corpus/good/2011__real-time-gas.frame --format csv \
       --columns DataTime,a34013-Rtd,a34013-Flag
 timestamp,source,measurement,quality,DataTime,a34013-Rtd,a34013-Flag
 2024-01-15 10:30:00.123,010000A8900016F000169DC0,2011,good,20240115103000,1.52,N
 
-$ mbt-hj212 quality corpus/edge/many-items.frame --rules corpus/rules/demo.rules
+$ mbt-datapoint quality corpus/edge/many-items.frame --rules corpus/rules/demo.rules
 2024-01-15 10:30:00.123  010000A8900016F000169DC0  CN=2011  [good]
     [error] DataTime: 缺少必需字段
 
@@ -241,7 +237,7 @@ $ mbt-hj212 quality corpus/edge/many-items.frame --rules corpus/rules/demo.rules
 `explain` 把一条报文摊成表，每一行都标出来源：
 
 ```
-$ mbt-hj212 explain '##0140QN=20240115103000123;ST=31;CN=2011;PW=123456;MN=010000A8900016F000169DC0;Flag=5;CP=&&DataTime=20240115103000;a34013-Rtd=1.52;a34013-Flag=N&&3647'
+$ mbt-datapoint explain '##0140QN=20240115103000123;ST=31;CN=2011;PW=123456;MN=010000A8900016F000169DC0;Flag=5;CP=&&DataTime=20240115103000;a34013-Rtd=1.52;a34013-Flag=N&&3647'
 
 长度    140 字节（数据段）
 CRC     3647                          校验通过
