@@ -172,7 +172,7 @@ fn main {
 
   if !@fs.path_exists(dir) {
     println("找不到语料目录「\{dir}」")
-    println("用法: mbt-hj212-verify [语料目录]")
+    println("用法: mbt-datapoint-verify [语料目录]")
     @sys.exit(2)
   }
 
