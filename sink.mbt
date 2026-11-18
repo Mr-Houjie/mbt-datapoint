@@ -248,9 +248,11 @@ fn influx_escape(s : String) -> String {
 ///|
 /// 渲染成一行 InfluxDB line protocol。
 ///
-/// 刻意不带时间戳：QN 是本地时钟且精度只有毫秒，硬转成纳秒会制造
-/// 一个看起来精确、实际不可信的时间。需要原始采样时间请用 NDJSON，
-/// 时间戳保留在 timestamp 字段里。
+/// 两处刻意为之：
+///   - **不带时间戳**：QN 是本地时钟且精度只有毫秒，硬转成纳秒会制造
+///     一个看起来精确、实际不可信的时间。需要原始采样时间请用 NDJSON。
+///   - **缺失值整对省略**，不写 `field=0`。line protocol 没有 null，
+///     但补一个 0 等于编造数据，下游分不清「没采到」和「采到就是 0」。
 pub fn Point::to_influx_line(self : Point) -> String {
   let sb = StringBuilder()
   sb.write_string(influx_escape(self.measurement))
@@ -260,17 +262,26 @@ pub fn Point::to_influx_line(self : Point) -> String {
   let mut written = 0
   for f in self.fields {
     for v in f.values {
-      if written > 0 {
-        sb.write_char(',')
-      }
-      sb.write_string(influx_escape(f.name))
-      sb.write_char('=')
+      // 缺失的值整对跳过，不写 field=0。
+      // line protocol 没有 null，但写 0 是**编造数据**——0 是一个合法的
+      // 测量值，下游拿到分不清「传感器没采到」和「采到就是 0」。这正是
+      // 本库把 Missing 与 Num(0) 分开的原因，不能在这一层又混回去。
       match v {
-        Num(n) => sb.write_string(n.to_string())
-        Text(s) => sb.write_string(json_escape(s))
-        Missing => sb.write_string("0")
+        Missing => ()
+        _ => {
+          if written > 0 {
+            sb.write_char(',')
+          }
+          sb.write_string(influx_escape(f.name))
+          sb.write_char('=')
+          match v {
+            Num(n) => sb.write_string(n.to_string())
+            Text(s) => sb.write_string(json_escape(s))
+            Missing => ()
+          }
+          written = written + 1
+        }
       }
-      written = written + 1
     }
   }
   // line protocol 不允许只有 tag 没有 field，给一个占位计数

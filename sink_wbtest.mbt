@@ -124,6 +124,32 @@ test "空数据点也能产出合法 line protocol" {
 }
 
 ///|
+// 这条是本库的核心主张在导出层的落地：缺失不能变 0。
+// 曾经写成 `Missing => "0"`，等于把整个库花力气分开的两件事又混回去。
+test "缺失值在 line protocol 里省略，不写成 0" {
+  let p = Point::new("t", "s", "m")
+  p.add("load", Num(0.5))
+  p.add("spare", Missing)
+  let line = p.to_influx_line()
+  assert_true(line.contains("load=0.5"))
+  assert_false(line.contains("spare"))
+  // 真正的 0 必须照写，两者不能混
+  let q = Point::new("t", "s", "m")
+  q.add("zero", Num(0.0))
+  assert_true(q.to_influx_line().contains("zero=0"))
+}
+
+///|
+test "全为缺失时仍产出合法行，不出现空 field 段" {
+  let p = Point::new("t", "s", "m")
+  p.add("a", Missing)
+  p.add("b", Missing)
+  let line = p.to_influx_line()
+  assert_true(line.contains("field_count=0"))
+  assert_false(line.contains("a="))
+}
+
+///|
 test "Format 解析与别名" {
   assert_true(Format::parse("json") is Some(_))
   assert_true(Format::parse("JSONL") is Some(_))
