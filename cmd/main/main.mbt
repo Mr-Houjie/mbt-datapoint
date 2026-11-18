@@ -1,4 +1,4 @@
-// mbt-hj212 命令行入口。
+// mbt-datapoint 命令行入口。
 //
 // 解析逻辑全部在库包里，这里只做三件事：读输入、调度子命令、把结果打出来。
 
@@ -9,33 +9,35 @@ const VERSION : String = "0.2.0"
 fn usage() -> String {
   let s = StringBuilder()
   s.write_string(
-    "mbt-hj212 \{VERSION} — HJ 212 报文解析、校验与数据转换\n\n",
+    "mbt-datapoint \{VERSION} — 设备数据接入、校验与转换\n\n",
   )
   s.write_string("用法:\n")
   s.write_string(
-    "  mbt-hj212 explain <报文|文件>     逐字段解释一条报文\n",
+    "  mbt-datapoint explain <报文|文件>     逐字段解释一条报文\n",
   )
   s.write_string(
-    "  mbt-hj212 check <报文|文件>       只校验，成功退出码 0\n",
+    "  mbt-datapoint check <报文|文件>       只校验，成功退出码 0\n",
   )
   s.write_string(
-    "  mbt-hj212 frames <报文|文件>      按 TCP 流分帧，逐条列出\n",
+    "  mbt-datapoint frames <报文|文件>      按 TCP 流分帧，逐条列出\n",
   )
   s.write_string(
-    "  mbt-hj212 pack <报文|文件>        把分包帧按包号重组成完整数据区\n",
+    "  mbt-datapoint pack <报文|文件>        把分包帧按包号重组成完整数据区\n",
   )
   s.write_string(
-    "  mbt-hj212 convert <报文|文件> [选项]  转成 JSON / NDJSON / CSV / InfluxDB\n",
+    "  mbt-datapoint convert <报文|文件> [选项]  转成 JSON / NDJSON / CSV / InfluxDB\n",
   )
   s.write_string(
-    "  mbt-hj212 quality <报文|文件> [选项]  按规则校验，列出问题清单\n",
+    "  mbt-datapoint quality <报文|文件> [选项]  按规则校验，列出问题清单\n",
   )
   s.write_string(
-    "  mbt-hj212 stats <报文|文件> [选项]    输出全链路处理统计\n",
+    "  mbt-datapoint stats <报文|文件> [选项]    输出全链路处理统计\n",
   )
-  s.write_string("  mbt-hj212 encode [选项]           构造一条报文\n")
   s.write_string(
-    "  mbt-hj212 crc <数据段>            算数据段的 CRC 与字节长度\n\n",
+    "  mbt-datapoint encode [选项]           构造一条报文\n",
+  )
+  s.write_string(
+    "  mbt-datapoint crc <数据段>            算数据段的 CRC 与字节长度\n\n",
   )
   s.write_string("convert / quality / stats 选项:\n")
   s.write_string(
@@ -546,7 +548,7 @@ fn main {
       @sys.exit(0)
     }
     "-v" | "--version" | "version" => {
-      println("mbt-hj212 \{VERSION}")
+      println("mbt-datapoint \{VERSION}")
       @sys.exit(0)
     }
     _ => {

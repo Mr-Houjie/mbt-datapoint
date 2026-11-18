@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 mbt-hj212 的语料文件。
+"""生成 mbt-datapoint 的语料文件。
 
 这里刻意不调用 MoonBit 实现，而是用 Python 重新写一遍 CRC16/MODBUS，
 让语料的校验码来自一套独立实现——如果两边算得不一样，生成阶段就会暴露。

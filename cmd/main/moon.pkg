@@ -1,5 +1,5 @@
 import {
-  "Mr-Houjie/mbt-hj212" @lib,
+  "Mr-Houjie/mbt-datapoint" @lib,
   "moonbitlang/core/env",
   "moonbitlang/x/fs",
   "moonbitlang/x/sys",
