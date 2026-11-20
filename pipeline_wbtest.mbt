@@ -30,6 +30,7 @@ fn split_segment(total : Int32, pno : Int32, name : String) -> Segment {
     flag: Flag::new(V2017, true, true),
     pnum: Some(total),
     pno: Some(pno),
+    rf: false,
     cp: area,
     extra: [],
   }

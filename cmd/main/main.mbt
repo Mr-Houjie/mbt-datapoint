@@ -3,7 +3,7 @@
 // 解析逻辑全部在库包里，这里只做三件事：读输入、调度子命令、把结果打出来。
 
 ///|
-const VERSION : String = "0.3.1"
+const VERSION : String = "0.4.0"
 
 ///|
 fn usage() -> String {
@@ -61,6 +61,7 @@ fn usage() -> String {
   )
   s.write_string("  --split                 置分包位\n")
   s.write_string("  --ack                   置应答位\n")
+  s.write_string("  --rf                    置补传标志（RF=1，HJ 212-2025）\n")
   s.write_string("  --pnum <总包数> --pno <包号>\n\n")
   s.write_string("退出码:\n")
   s.write_string("  0  成功\n")
@@ -356,6 +357,7 @@ fn cmd_encode(args : Array[String]) -> Int32 {
   let mut flag_text = ""
   let mut split = false
   let mut ack = false
+  let mut rf = false
   let mut pnum = -1
   let mut pno = -1
   let mut i = 0
@@ -410,6 +412,7 @@ fn cmd_encode(args : Array[String]) -> Int32 {
         }
       "--split" => split = true
       "--ack" => ack = true
+      "--rf" => rf = true
       _ => ()
     }
     i = i + 1
@@ -451,6 +454,7 @@ fn cmd_encode(args : Array[String]) -> Int32 {
       } else {
         None
       },
+      rf,
       cp: area,
       extra: [],
     },

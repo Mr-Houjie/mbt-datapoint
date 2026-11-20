@@ -222,6 +222,22 @@ fn hex4(value : Int32) -> String {
 }
 
 ///|
+/// 左补零的定宽二进制串，用于按位展示位域（例如 Flag 的 V5~V0）。
+fn bin_pad(value : Int32, width : Int32) -> String {
+  let sb = StringBuilder()
+  let mut i = width - 1
+  while i >= 0 {
+    if ((value >> i) & 1) == 1 {
+      sb.write_char('1')
+    } else {
+      sb.write_char('0')
+    }
+    i = i - 1
+  }
+  sb.to_string()
+}
+
+///|
 /// 左补零到固定宽度。
 fn zero_pad(value : Int32, width : Int32) -> String {
   let digits = value.to_string()

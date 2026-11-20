@@ -44,6 +44,7 @@ pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
   let mut flag_raw : Int32? = None
   let mut pnum : Int32? = None
   let mut pno : Int32? = None
+  let mut rf = false
   let extra : Array[DataItem] = []
   let seen_cp = cp_pos >= 0
   // 核心字段只允许出现一次。现场报文偶尔会把 MN 重复贴两遍，
@@ -70,7 +71,8 @@ pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
           name == "MN" ||
           name == "Flag" ||
           name == "PNUM" ||
-          name == "PNO"
+          name == "PNO" ||
+          name == "RF"
         if is_core {
           if seen_fields.contains(name) {
             return Err(DuplicateField(name))
@@ -96,6 +98,12 @@ pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
           "PNO" =>
             match parse_uint_all(value) {
               Some(v) => pno = Some(v)
+              None => return Err(BadFieldValue(name, value))
+            }
+          // 2025 版新增：RF=1 表示补传报文，非补传时无本字段。
+          "RF" =>
+            match parse_uint_all(value) {
+              Some(v) => rf = v != 0
               None => return Err(BadFieldValue(name, value))
             }
           _ => extra.push({ name, values: [value], })
@@ -130,7 +138,7 @@ pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
   } else {
     return Err(MissingField("CP"))
   }
-  Ok({ qn, st, cn, pw, mn, flag, pnum, pno, cp, extra, })
+  Ok({ qn, st, cn, pw, mn, flag, pnum, pno, rf, cp, extra, })
 }
 
 ///|
@@ -164,6 +172,9 @@ pub fn Segment::text(self : Segment) -> String {
       sb.write_string(v.to_string())
     }
     None => ()
+  }
+  if self.rf {
+    sb.write_string(";RF=1")
   }
   let mut i = 0
   while i < self.extra.length() {

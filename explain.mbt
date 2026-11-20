@@ -107,7 +107,7 @@ fn join_values(values : Array[String]) -> String {
 
 ///|
 fn flag_note(flag : Flag) -> String {
-  let version_bits = zero_pad((flag.raw >> 2) & 0x3F, 6)
+  let version_bits = bin_pad((flag.raw >> 2) & 0x3F, 6)
   let split = if flag.is_split() { "分包" } else { "不分包" }
   let ack = if flag.needs_ack() { "需应答" } else { "不需应答" }
   "版本位 \{version_bits} · \{split} · \{ack}"

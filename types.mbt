@@ -306,6 +306,8 @@ pub(all) struct Segment {
   flag : Flag
   pnum : Int32?
   pno : Int32?
+  /// HJ 212-2025 新增的补传标志 `RF`，`RF=1` 表示该报文属于补传；非补传时无此字段。
+  rf : Bool
   cp : DataArea
   extra : Array[DataItem]
 }
