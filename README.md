@@ -353,7 +353,9 @@ moon check --deny-warn # 零告警
 
 选题为什么从文本换行换到 HJ 212、为什么第二次又把重心从「协议解析」挪到「数据管道」、AI 在哪儿帮了倒忙、测试抓出过哪三个真 bug，都记在 [`DEVLOG.md`](DEVLOG.md)。
 
-标准符合性单独立了一份 [`STANDARD-COMPLIANCE.md`](STANDARD-COMPLIANCE.md)：目标标准版本、完整兼容边界（哪些必拒、哪些降级、哪些明确不做）、以及拿官方附录报文跑出来的 CRC 计算 / 接收 / 转换实际输出。
+标准符合性单独立了一份 [`STANDARD-COMPLIANCE.md`](STANDARD-COMPLIANCE.md)：目标标准版本、完整兼容边界（哪些必拒、哪些降级、哪些明确不做）、以及拿官方附录报文跑出来的 CRC 计算 / 接收 / 转换实际输出。其中所有命令输出都接入了 CI 对账，改代码而不同步文档会直接让 CI 失败。
+
+针对大赛初审的驳回意见，回复正文在 [`REPLY-TO-REVIEW.md`](REPLY-TO-REVIEW.md)。
 
 ## 许可
 
