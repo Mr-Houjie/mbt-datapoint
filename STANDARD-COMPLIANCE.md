@@ -238,6 +238,6 @@ $ mbt-datapoint stats corpus/good/appendix-a__标准附录A示例.frame
 ## 五、当前验证状态
 
 - `moon test`：103 个测试全部通过；
-- `moon run cmd/verify`：34 条语料用例全部通过；
+- `moon run cmd/verify`：34 个用例全部通过；
 - `moon check --deny-warn`：零告警；
-- 语料 34 个文件，其中 `good/` 12 个（含两版标准附录示例）、`edge/` 6 个、`split/` 5 个、`bad/` 11 个。
+- 语料 35 个帧 / 流文件（`good/` 12、`edge/` 6、`split/` 5、`bad/` 11、`stream/` 1）加 1 份规则配置。按自检口径归并为 34 个用例：`split/` 的 5 个分包文件归为 2 组重组用例，规则配置拆成「语法」与「命中」两条。
