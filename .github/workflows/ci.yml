@@ -48,3 +48,8 @@ jobs:
 
       - name: Build CLI
         run: moon build --target native cmd/main
+
+      # 标准符合性说明里贴的每段命令输出都要与实现逐字一致。
+      # 这份材料是给审核方照着重跑的，少一行或多一个空格就算不实。
+      - name: Docs output matches binary
+        run: python3 tools/check_doc_outputs.py

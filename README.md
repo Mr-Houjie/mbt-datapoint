@@ -344,7 +344,7 @@ cmd/verify/      语料与管道自检
 ## 测试
 
 ```bash
-moon test              # 103 个单元测试（含对抗性测试）
+moon test              # 109 个单元测试（含对抗性测试）
 moon run cmd/verify    # 34 个语料用例（含 2 组分包重组、1 段混合流、1 份规则配置、2 条标准原文示例）
 moon check --deny-warn # 零告警
 ```
