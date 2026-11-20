@@ -263,10 +263,10 @@ test "第一字段就是 CP 时也能解析" {
 test "CRC 小写十六进制应当被接受" {
   // 标准写的是大写，但现场设备输出小写并不罕见。CRC 是数值比较，
   // 大小写不该影响结果——这条测试钉住这个行为。
-  let lower = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&0759\r\n"
+  let lower = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&1c80\r\n"
   match Frame::decode(lower) {
     Ok(_) => ()
-    Err(e) => fail("大写 0759 被拒绝: \{e.message()}")
+    Err(e) => fail("小写 1c80 被拒绝: \{e.message()}")
   }
   let lower_hex = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&0abc\r\n"
   // 0abc 是随手写的，重点看错误类型；不应因字母大小写报结构错误
@@ -312,6 +312,7 @@ test "往返一致：构造的帧解码再编码字节相同" {
       flag: Flag::new(V2017, false, true),
       pnum: None,
       pno: None,
+      rf: false,
       cp: area,
       extra: [],
     },

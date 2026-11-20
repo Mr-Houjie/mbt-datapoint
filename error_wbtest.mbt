@@ -9,7 +9,7 @@ test "帧层错误：包头、长度、CRC、包尾" {
     MissingHeader,
     BadLengthField("XXXX"),
     Truncated(100, 20),
-    BadCrc("1C80", "0759"),
+    BadCrc("1C81", "1C80"),
     BadTail("xx"),
     EmptySegment,
     TrailingGarbage("abc"),

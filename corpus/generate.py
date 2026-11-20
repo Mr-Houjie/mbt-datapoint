@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """生成 mbt-datapoint 的语料文件。
 
-这里刻意不调用 MoonBit 实现，而是用 Python 重新写一遍 CRC16/MODBUS，
+这里刻意不调用 MoonBit 实现，而是用 Python 重新写一遍 CRC16，
 让语料的校验码来自一套独立实现——如果两边算得不一样，生成阶段就会暴露。
+
+注意算法是 HJ 212 附录 A 的写法，不是 CRC-16/MODBUS：每字节入口为
+crc = (crc >> 8) ^ byte（与高字节异或），MODBUS 则是 crc ^= byte。
+两者初值、多项式相同，仅此一处不同，但结果完全不同。用附录 A 的示例
+报文对拍可以一眼分辨：标准写法得 0x1C80，MODBUS 写法得 0x0759。
 """
 import os
 import sys
@@ -13,7 +18,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 def crc16(data: bytes) -> int:
     crc = 0xFFFF
     for b in data:
-        crc ^= b
+        crc = (crc >> 8) ^ b
         for _ in range(8):
             if crc & 1:
                 crc = (crc >> 1) ^ 0xA001
@@ -48,6 +53,28 @@ def seg(qn, st, cn, pw, mn, flag, cp, pnum=None, pno=None):
 
 MN = "010000A8900016F000169DC0"
 QN = "20240115103000123"
+
+# 标准正文的 CRC 示例，逐字符照抄，校验码未作任何改动。
+# 这些不是自己编的样本，是标准本身——它们能被解码，才说明 CRC 实现与标准一致。
+# 生成时会先自检：按本脚本的 crc16 算各自的数据段，结果必须与标准标注的一致。
+APPENDIX_A_SEGMENT = (
+    "QN=20160801085857223;ST=32;CN=1062;PW=100000;"
+    "MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&"
+)
+APPENDIX_A_FRAME = "##0101" + APPENDIX_A_SEGMENT + "1C80\r\n"
+
+# HJ 212-2025 附录 A.1 的示例（Flag=9 → 版本位 000010，即 2025 版）。
+APPENDIX_A_2025_SEGMENT = (
+    "QN=20240601085857223;ST=32;CN=1011;PW=123456;"
+    "MN=010000A8900016F000169DC0;Flag=9;CP=&&&&"
+)
+APPENDIX_A_2025_FRAME = "##0087" + APPENDIX_A_2025_SEGMENT + "2200\r\n"
+
+# 两版标准各自标注的长度与校验码，作为自检基准。
+APPENDIX_A_CASES = [
+    ("HJ212-2017 附录A", APPENDIX_A_SEGMENT, 101, 0x1C80),
+    ("HJ212-2025 附录A", APPENDIX_A_2025_SEGMENT, 87, 0x2200),
+]
 
 GOOD = {
     "2011__real-time-gas.frame": seg(
@@ -208,12 +235,33 @@ def build_bad(name: str, seg_text: str) -> bytes:
 
 
 def main() -> None:
+    # 先自检：正文里给出的每条示例都必须能被本脚本的 CRC 实现复现。
+    # 若这条断言失败，说明算法写错了，所有语料的校验码都不可信。
+    for label, seg_text, want_len, want_crc in APPENDIX_A_CASES:
+        body = seg_text.encode("utf-8")
+        got = crc16(body)
+        if len(body) != want_len or got != want_crc:
+            sys.stderr.write(
+                "%s 自检失败：长度 %d（应为 %d），CRC 算出 0x%04X（应为 0x%04X）\n"
+                % (label, len(body), want_len, got, want_crc)
+            )
+            sys.exit(1)
+
     for sub in ("good", "edge", "bad", "split"):
         d = os.path.join(ROOT, sub)
         os.makedirs(d, exist_ok=True)
         for old in os.listdir(d):
             os.remove(os.path.join(d, old))
 
+    # 标准正文的示例报文单独落在 good/ 下，自检每次都会跑它们。
+    write(
+        os.path.join(ROOT, "good", "appendix-a__标准附录A示例.frame"),
+        APPENDIX_A_FRAME.encode("utf-8"),
+    )
+    write(
+        os.path.join(ROOT, "good", "appendix-a-2025__标准附录A示例.frame"),
+        APPENDIX_A_2025_FRAME.encode("utf-8"),
+    )
     for name, s in GOOD.items():
         write(os.path.join(ROOT, "good", name), make_frame(s))
     for name, s in EDGE.items():
@@ -223,8 +271,11 @@ def main() -> None:
     for name, s in BAD.items():
         write(os.path.join(ROOT, "bad", name), build_bad(name, s))
 
-    total = len(GOOD) + len(EDGE) + len(SPLIT) + len(BAD)
-    sys.stdout.write("生成 %d 个语料文件\n" % total)
+    total = 2 + len(GOOD) + len(EDGE) + len(SPLIT) + len(BAD)
+    sys.stdout.write(
+        "生成 %d 个语料文件（附录 A 示例自检通过：2017=0x1C80，2025=0x2200）\n"
+        % total
+    )
 
 
 if __name__ == "__main__":

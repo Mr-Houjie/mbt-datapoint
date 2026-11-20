@@ -7,28 +7,53 @@
 const SAMPLE_SEGMENT : String = "QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&"
 
 ///|
-const SAMPLE_FRAME : String = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&0759\r\n"
+/// HJ 212-2017 附录 A 示例报文的原文，逐字符照抄，校验码 `1C80` 未作任何改动。
+const SAMPLE_FRAME : String = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&1C80\r\n"
 
 ///|
-test "crc16 与独立实现对拍" {
+test "crc16 复现标准附录示例的校验码" {
+  // 附录 A 示例：数据段 101 字节，标注校验码 1C80。
+  // 算出来必须是 1C80，否则说明本库没按附录 A 的算法实现。
   assert_eq(utf8_len(SAMPLE_SEGMENT), 101)
-  assert_eq(crc16_hex(SAMPLE_SEGMENT), "0759")
+  assert_eq(crc16_hex(SAMPLE_SEGMENT), "1C80")
   // 空串是初值，不做最终异或
   assert_eq(crc16_hex(""), "FFFF")
 }
 
 ///|
-test "标准附录示例的校验码与算法不一致" {
-  // 附录 A 的示例写的是 1C80，但按附录 A 的算法对同一数据段算出的是 0759。
-  // 本库以算法为准，因此 1C80 必须被拒绝，且报出正确值。
-  let wrong = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&1C80\r\n"
-  match Frame::decode(wrong) {
+test "CRC 算法是标准写法而非 MODBUS 写法" {
+  // 附录 A 的入口是 crc = (crc >> 8) ^ byte，不是 MODBUS 的 crc ^= byte。
+  // 两者初值与多项式相同，只有这一处不同，但结果毫无关系——这条测试把
+  // 差异固定下来，防止以后有人「顺手优化」回 MODBUS 实现。
+  assert_eq(crc16_hex("A"), "7080")
+  assert_eq(crc16_hex("AB"), "D581")
+  assert_eq(crc16_hex("0123456789"), "90C1")
+  // 同样的输入按 MODBUS 会得到 707F / D1B1 / 434D，与上面三项全不相同。
+  assert_true(crc16_hex("0123456789") != "434D")
+}
+
+///|
+test "标准附录示例的报文可以完整解码" {
+  match Frame::decode(SAMPLE_FRAME) {
+    Ok(frame) => {
+      assert_eq(frame.segment.cn, "1062")
+      assert_eq(frame.segment.cp.get("RtdInterval"), Some("30"))
+    }
+    Err(e) => fail("附录 A 的示例报文应当通过校验，实际报错：\{e.message()}")
+  }
+}
+
+///|
+test "篡改校验码会被拒绝" {
+  // 把 1C80 改成 1C81，必须报 BadCrc 并给出正确值
+  let tampered = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&1C81\r\n"
+  match Frame::decode(tampered) {
     Ok(_) => fail("应当因 CRC 不匹配而拒绝")
     Err(e) =>
       match e {
         BadCrc(declared, computed) => {
-          assert_eq(declared, "1C80")
-          assert_eq(computed, "0759")
+          assert_eq(declared, "1C81")
+          assert_eq(computed, "1C80")
         }
         _ => fail("错误类型应为 BadCrc")
       }
@@ -64,7 +89,7 @@ test "解码后再编码是恒等变换" {
 
 ///|
 test "包尾缺失会被拒绝" {
-  let no_tail = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&0759"
+  let no_tail = "##0101QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&1C80"
   match Frame::decode(no_tail) {
     Ok(_) => fail("缺少包尾时应当报错")
     Err(e) =>
@@ -89,7 +114,7 @@ test "包头缺失会被拒绝" {
 
 ///|
 test "长度字段被篡改时定位到数据段边界" {
-  let bad_len = "##0102QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&0759\r\n"
+  let bad_len = "##0102QN=20160801085857223;ST=32;CN=1062;PW=100000;MN=010000A8900016F000169DC0;Flag=5;CP=&&RtdInterval=30&&1C80\r\n"
   match Frame::decode(bad_len) {
     Ok(_) => fail("长度不符时应当报错")
     Err(e) =>
@@ -160,8 +185,51 @@ test "Flag 位布局" {
 }
 
 ///|
-test "QN 时间戳解析" {
-  match QnTime::parse("20160801085857223") {
+/// HJ 212-2025 附录 A.1 的示例报文，逐字符照抄，`Flag=9`（版本位 000010）、校验码 `2200`。
+const SAMPLE_FRAME_2025 : String = "##0087QN=20240601085857223;ST=32;CN=1011;PW=123456;MN=010000A8900016F000169DC0;Flag=9;CP=&&&&2200\r\n"
+
+///|
+test "两版标准的附录 A 示例都能解码" {
+  // 2017 与 2025 的 CRC 算法完全相同，两条官方示例都必须通过校验。
+  match Frame::decode(SAMPLE_FRAME) {
+    Ok(f) => assert_eq(f.segment.flag.version().label(), "HJ 212-2017")
+    Err(e) => fail("2017 示例解码失败：\{e.message()}")
+  }
+  match Frame::decode(SAMPLE_FRAME_2025) {
+    Ok(f) => {
+      assert_eq(f.segment.flag.version().label(), "HJ 212-2025")
+      assert_eq(f.segment.cn, "1011")
+      assert_eq(f.segment.rf, false)
+    }
+    Err(e) => fail("2025 示例解码失败：\{e.message()}")
+  }
+  assert_eq(crc16_hex("QN=20240601085857223;ST=32;CN=1011;PW=123456;MN=010000A8900016F000169DC0;Flag=9;CP=&&&&"), "2200")
+}
+
+///|
+test "2025 新增的补传标志 RF 可解析且往返一致" {
+  // RF=1 表示补传报文；非补传时标准规定不带此字段。
+  let with_rf = "QN=20240601085857223;ST=32;CN=2051;PW=123456;MN=010000A8900016F000169DC0;Flag=9;RF=1;CP=&&a=1&&"
+  match Segment::parse(with_rf) {
+    Ok(seg) => {
+      assert_eq(seg.rf, true)
+      assert_eq(seg.text(), with_rf)
+    }
+    Err(e) => fail(e.message())
+  }
+  let without = "QN=20240601085857223;ST=32;CN=2051;PW=123456;MN=010000A8900016F000169DC0;Flag=9;CP=&&a=1&&"
+  match Segment::parse(without) {
+    Ok(seg) => {
+      assert_eq(seg.rf, false)
+      // 未置位时不应凭空生成 RF 字段
+      assert_false(seg.text().contains("RF="))
+    }
+    Err(e) => fail(e.message())
+  }
+}
+
+///|
+test "QN 时间戳解析" {  match QnTime::parse("20160801085857223") {
     Some(t) => {
       assert_eq(t.year, 2016)
       assert_eq(t.month, 8)
@@ -181,7 +249,7 @@ test "QN 时间戳解析" {
 test "流式分帧：半包与粘包" {
   let framer = Framer::new()
   let a = SAMPLE_FRAME
-  let b = "##0071QN=20160801085857224;ST=32;CN=9011;MN=010000A8900016F000169DC0;Flag=3;CP=&&&&8D0A\r\n"
+  let b = "##0077QN=20160801085857224;ST=32;CN=9011;MN=010000A8900016F000169DC0;Flag=3;CP=&&&&B7C1\r\n"
   // 一次性喂入两帧
   let events = framer.feed(a + b)
   let mut good = 0
@@ -191,8 +259,7 @@ test "流式分帧：半包与粘包" {
       _ => ()
     }
   }
-  // 第二帧的 CRC 是随手写的，因此只要求至少解出第一帧
-  assert_true(good >= 1)
+  assert_eq(good, 2)
 }
 
 ///|
@@ -233,6 +300,7 @@ test "数据区含中文时按 UTF-8 字节计长度" {
       flag: Flag::from_raw(1),
       pnum: None,
       pno: None,
+      rf: false,
       cp: match DataArea::parse("&&Name=宁波&&") {
         Ok(area) => area
         Err(_) => DataArea::new()
