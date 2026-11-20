@@ -3,7 +3,7 @@
 // 解析逻辑全部在库包里，这里只做三件事：读输入、调度子命令、把结果打出来。
 
 ///|
-const VERSION : String = "0.4.0"
+const VERSION : String = "0.4.1"
 
 ///|
 fn usage() -> String {
@@ -167,7 +167,9 @@ fn cmd_check(arg : String) -> Int32 {
           }
           @lib.Bad(error, raw) => {
             println("FAIL（\{error.stage().label()}）\{error.message()}")
-            println("     \{raw}")
+            // 回显去掉行尾：raw 带着原报文的 \r\n，直接打出来会在
+            // Windows 上变成 \r\r\n，终端里看不出，重定向到文件就多一行空行。
+            println("     \{trim_tail(raw)}")
             bad = bad + 1
           }
           @lib.Noise(_) => ()
@@ -218,7 +220,7 @@ fn cmd_frames(arg : String) -> Int32 {
             println(
               "\{pad3(index)}  FAIL（\{error.stage().label()}）\{error.message()}",
             )
-            println("     原文 \{raw}")
+            println("     原文 \{trim_tail(raw)}")
           }
           @lib.Noise(text) =>
             println("      SKIP \{text.length()} 字节噪声")
