@@ -287,7 +287,9 @@ def main():
     nblocks = len(blocks)
     chars = sum(len(p) if isinstance(p, str) else sum(len(x) for x in p) for _, p in blocks)
 
-    for fs in (7.0, 6.95, 6.9, 6.85, 6.8, 6.7, 6.55, 6.4, 6.25, 6.1, 5.95, 5.8):
+    # 从大到小试，取「仍能单页」的最大字号；正文缩到 3000 字符后 6.85pt
+    # 已不是上限，这个序列让脚本自己找当前内容能撑住的字号。
+    for fs in (8.5, 8.2, 8.0, 7.8, 7.6, 7.4, 7.2, 7.0, 6.85, 6.7, 6.55, 6.4, 6.25, 6.1):
         if os.path.exists(OUT_PDF):
             os.remove(OUT_PDF)
         n = render(blocks, fs)
