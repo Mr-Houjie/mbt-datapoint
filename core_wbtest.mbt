@@ -126,13 +126,47 @@ test "长度字段被篡改时定位到数据段边界" {
 }
 
 ///|
-test "数据区解析与多值" {
-  match DataArea::parse("&&DataTime=20240101000000;a=1.5,b=2.5;Data-Flag=N&&") {
+test "数据区解析：不同项目用分号" {
+  match DataArea::parse("&&DataTime=20240101000000;a=1.5;b=2.5;Data-Flag=N&&") {
     Ok(area) => {
-      assert_eq(area.length(), 3)
+      assert_eq(area.length(), 4)
       assert_eq(area.get("DataTime"), Some("20240101000000"))
+      assert_eq(area.get("a"), Some("1.5"))
+      assert_eq(area.get("b"), Some("2.5"))
+      assert_eq(area.text(), "DataTime=20240101000000;a=1.5;b=2.5;Data-Flag=N")
+    }
+    Err(e) => fail(e.message())
+  }
+}
+
+///|
+test "数据区解析：同一项目的不同类别用逗号，是两个独立字段" {
+  // 标准 6.3.4.1：逗号分隔同一项目的不同类别，逗号两侧各自都是「名=值」。
+  // 附录 A.2 的示例正是这个形态。
+  match DataArea::parse("&&a01011-Min=1.35,a01011-Avg=1.35,a01011-Flag=N;a01012-Min=9.3&&") {
+    Ok(area) => {
+      assert_eq(area.length(), 4)
+      assert_eq(area.get("a01011-Min"), Some("1.35"))
+      assert_eq(area.get("a01011-Avg"), Some("1.35"))
+      assert_eq(area.get("a01011-Flag"), Some("N"))
+      assert_eq(area.get("a01012-Min"), Some("9.3"))
+      // 往返必须保留原来的逗号/分号，不能一律改成分号
+      assert_eq(
+        area.text(),
+        "a01011-Min=1.35,a01011-Avg=1.35,a01011-Flag=N;a01012-Min=9.3",
+      )
+    }
+    Err(e) => fail(e.message())
+  }
+}
+
+///|
+test "数据区解析：同字段多值仍用逗号" {
+  match DataArea::parse("&&a=1.5,2.5&&") {
+    Ok(area) => {
+      assert_eq(area.length(), 1)
       assert_eq(area.get_all("a").length(), 2)
-      assert_eq(area.text(), "DataTime=20240101000000;a=1.5,b=2.5;Data-Flag=N")
+      assert_eq(area.text(), "a=1.5,2.5")
     }
     Err(e) => fail(e.message())
   }

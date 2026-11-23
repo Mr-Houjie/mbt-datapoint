@@ -275,6 +275,12 @@ fn main {
   }
 
   println("")
+  if secure_demo() {
+    passed = passed + 1
+  }
+  total = total + 1
+
+  println("")
   println("\{passed}/\{total} 通过")
   if passed != total {
     @sys.exit(1)

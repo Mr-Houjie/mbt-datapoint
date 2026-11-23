@@ -3,7 +3,7 @@
 // 解析逻辑全部在库包里，这里只做三件事：读输入、调度子命令、把结果打出来。
 
 ///|
-const VERSION : String = "0.4.1"
+const VERSION : String = "0.5.0"
 
 ///|
 fn usage() -> String {
@@ -23,6 +23,9 @@ fn usage() -> String {
   )
   s.write_string(
     "  mbt-datapoint pack <报文|文件>        把分包帧按包号重组成完整数据区\n",
+  )
+  s.write_string(
+    "  mbt-datapoint cipher <文件> [--key <密钥>]  解码加密报文（HJ 212-2025 6.4.4）\n",
   )
   s.write_string(
     "  mbt-datapoint convert <报文|文件> [选项]  转成 JSON / NDJSON / CSV / InfluxDB\n",
@@ -46,6 +49,15 @@ fn usage() -> String {
   s.write_string("  --columns <列名>        CSV 字段列，逗号分隔\n")
   s.write_string(
     "  --rules <文件>          规则配置文件，每行一条，见 corpus/rules/demo.rules\n\n",
+  )
+  s.write_string(
+    "cipher 选项:\n",
+  )
+  s.write_string(
+    "  --key <32位hex>         16 字节密钥；不给出时按 CN 报 CipherRequired\n",
+  )
+  s.write_string(
+    "                          加密算法以组件注入，本项目附 sm4/ 参考实现\n\n",
   )
   s.write_string("encode 选项:\n")
   s.write_string("  --cn <4位命令码>        默认 2011\n")
@@ -527,6 +539,7 @@ fn main {
         @sys.exit(cmd_frames(rest[0]))
       }
     "encode" => @sys.exit(cmd_encode(rest))
+    "cipher" => @sys.exit(cmd_cipher(rest))
     "convert" => @sys.exit(cmd_convert(rest))
     "quality" => @sys.exit(cmd_quality(rest))
     "stats" => @sys.exit(cmd_stats(rest))

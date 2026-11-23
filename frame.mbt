@@ -84,6 +84,14 @@ pub fn Frame::decode(text : String) -> Result[Frame, DecodeError] {
   let segment_text = slice_chars(cs, seg_start, seg_end)
   let computed = crc16_text(segment_text)
   if declared_crc != computed {
+    // 这里**只报 BadCrc**，不猜"是不是该加密"。
+    //
+    // 曾经在文本路径也加过 CipherRequired 的推断，结果是一条 CRC 被改坏的
+    // CN=2011 报文被诊断成"没配解密组件"——而 2000~2999 正是现场最常见的
+    // 帧型，误诊面最大。根因是文本路径本来就不该讨论加密：入参已经是
+    // 字符串，密文是任意字节，绝大多数过不了 UTF-8 解码，根本走不到这里。
+    // 加密诊断只归字节路径（Frame::decode_bytes），那里调用方显式传了
+    // Decryptor，说"缺组件"才是有依据的。
     return Err(BadCrc(crc_field, hex4(computed)))
   }
   // 包尾：CRLF、LF、CR 都接受，其余内容视为错误

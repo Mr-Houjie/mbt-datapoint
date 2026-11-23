@@ -106,7 +106,7 @@ pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
               Some(v) => rf = v != 0
               None => return Err(BadFieldValue(name, value))
             }
-          _ => extra.push({ name, values: [value], })
+          _ => extra.push({ name, values: [value], comma_before: false, })
         }
       }
       start = i + 1

@@ -1,5 +1,6 @@
 import {
   "Mr-Houjie/mbt-datapoint" @lib,
+  "Mr-Houjie/mbt-datapoint/sm4" @sm4,
   "moonbitlang/core/env",
   "moonbitlang/x/fs",
   "moonbitlang/x/sys",

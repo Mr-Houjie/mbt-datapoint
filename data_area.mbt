@@ -40,16 +40,23 @@ pub fn DataArea::parse(text : String) -> Result[DataArea, DecodeError] {
   }
   let mut start = 0
   let mut i = 0
+  let mut comma_before = false
   while i <= cs.length() {
     let at_end = i == cs.length()
-    if at_end || cs[i] == ';' {
+    // 逗号两侧可能是「同一项目的不同类别」（两个独立字段），也可能是
+    // 同一个字段的多个取值。区别在于逗号之后是不是又一个 "名="。
+    let is_comma_field = !at_end &&
+      cs[i] == ',' &&
+      looks_like_field_start(cs, i + 1)
+    if at_end || cs[i] == ';' || is_comma_field {
       let piece = trim_chars(chars_slice(cs, start, i))
       if piece.length() > 0 {
-        match parse_item(piece) {
+        match parse_item(piece, comma_before) {
           Ok(item) => items.push(item)
           Err(e) => return Err(e)
         }
       }
+      comma_before = is_comma_field
       start = i + 1
     }
     i = i + 1
@@ -59,7 +66,7 @@ pub fn DataArea::parse(text : String) -> Result[DataArea, DecodeError] {
 
 ///|
 /// 解析单个 `名称=值[,值...]`。
-fn parse_item(cs : Array[Char]) -> Result[DataItem, DecodeError] {
+fn parse_item(cs : Array[Char], comma_before : Bool) -> Result[DataItem, DecodeError] {
   let eq = find_char(cs, '=', 0)
   if eq < 0 {
     return Err(BadField(slice_chars(cs, 0, cs.length())))
@@ -83,7 +90,37 @@ fn parse_item(cs : Array[Char]) -> Result[DataItem, DecodeError] {
     }
     i = i + 1
   }
-  Ok({ name, values, })
+  Ok({ name, values, comma_before, })
+}
+
+///|
+/// 从 `from` 出发，判断接下来是否是「字段名=」的开头。
+///
+/// 用于区分数据区里的两种逗号：`a01011-Min=1.35,a01011-Avg=1.35` 里逗号
+/// 之后是新字段；`x=1.5,2.0` 里逗号之后是这个字段的第二个取值。
+/// 判定方式：一路跳过字段名允许的字符，若紧接着是 `=` 就是新字段。
+fn looks_like_field_start(cs : Array[Char], from : Int32) -> Bool {
+  let mut i = from
+  while i < cs.length() && is_space_char(cs[i]) {
+    i = i + 1
+  }
+  let name_start = i
+  while i < cs.length() {
+    let c = cs[i]
+    if c == '=' {
+      return i > name_start
+    }
+    let ok = (c >= 'A' && c <= 'Z') ||
+      (c >= 'a' && c <= 'z') ||
+      (c >= '0' && c <= '9') ||
+      c == '_' ||
+      c == '-'
+    if !ok {
+      return false
+    }
+    i = i + 1
+  }
+  false
 }
 
 ///|
@@ -123,10 +160,14 @@ pub fn DataArea::text(self : DataArea) -> String {
   let sb = StringBuilder()
   let mut i = 0
   while i < self.items.length() {
-    if i > 0 {
-      sb.write_char(';')
-    }
     let item = self.items[i]
+    if i > 0 {
+      if item.comma_before {
+        sb.write_char(',')
+      } else {
+        sb.write_char(';')
+      }
+    }
     sb.write_string(item.name)
     sb.write_char('=')
     let mut j = 0
@@ -341,7 +382,7 @@ pub fn DataArea::set_values(
     }
     i = i + 1
   }
-  self.items.push({ name, values, })
+  self.items.push({ name, values, comma_before: false, })
 }
 
 ///|

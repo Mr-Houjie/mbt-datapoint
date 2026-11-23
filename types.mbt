@@ -132,6 +132,14 @@ pub(all) enum DecodeError {
   BadDataArea(String)
   /// CRC 与包尾之间还有多余字符
   TrailingGarbage(String)
+  /// 该命令编码按标准必须加密，但没有提供解密组件：命令编码
+  CipherRequired(Int32)
+  /// 解密组件返回 `None`（密钥不对、组件不可用）
+  DecryptFailed
+  /// 解密组件返回的长度与入参不符：期望、实际
+  DecryptBadLength(Int32, Int32)
+  /// 解密组件原样返回了密文，说明「明文被当成密文」送进来了
+  DecryptNoOp
 }
 
 ///|
@@ -153,6 +161,10 @@ pub fn DecodeError::kind(self : DecodeError) -> String {
     BadFieldValue(_, _) => "BadFieldValue"
     BadDataArea(_) => "BadDataArea"
     TrailingGarbage(_) => "TrailingGarbage"
+    CipherRequired(_) => "CipherRequired"
+    DecryptFailed => "DecryptFailed"
+    DecryptBadLength(_, _) => "DecryptBadLength"
+    DecryptNoOp => "DecryptNoOp"
   }
 }
 
@@ -175,6 +187,12 @@ pub fn DecodeError::message(self : DecodeError) -> String {
     BadDataArea(reason) => "数据区不合法：\{reason}"
     TrailingGarbage(s) =>
       "包尾之后还有多余字符 \{describe_invisible(s)}"
+    CipherRequired(cn) =>
+      "命令编码 \{cn} 按标准 6.4.4 必须加密，但未提供解密组件"
+    DecryptFailed => "解密失败：解密组件无法解开这段密文（密钥不对或组件不可用）"
+    DecryptBadLength(expected, got) =>
+      "解密组件返回 \{got} 字节，应为 \{expected} 字节（Nopadding 要求等长）"
+    DecryptNoOp => "解密组件原样返回了密文，疑似把明文当成密文送进了加密路径"
   }
 }
 
@@ -214,7 +232,13 @@ pub fn DecodeError::stage(self : DecodeError) -> ErrorStage {
     | BadCrc(_, _)
     | BadTail(_)
     | EmptySegment
-    | TrailingGarbage(_) => FrameLayer
+    | TrailingGarbage(_)
+    // 解密相关的一律归帧层：拿不到明文就等于拿不到数据段，
+    // 这条报文里的任何字段都不能再用
+    | CipherRequired(_)
+    | DecryptFailed
+    | DecryptBadLength(_, _)
+    | DecryptNoOp => FrameLayer
     MissingField(_) | DuplicateField(_) | BadField(_) | BadFieldValue(_, _) =>
       SegmentLayer
     BadDataArea(_) => DataAreaLayer
@@ -281,6 +305,15 @@ pub(all) enum FieldType {
 pub(all) struct DataItem {
   name : String
   mut values : Array[String]
+  /// 与**前一项**之间的分隔符是否为 `,`。
+  ///
+  /// 标准 6.3.4.1：「同一项目不同类别的值之间用半角","分隔，不同项目之间用
+  /// 半角";"分隔」。所以 `a01011-Min=1.35,a01011-Avg=1.35` 里的逗号两侧是
+  /// **两个独立字段**，不是同名字段的多值。
+  ///
+  /// 之所以把分隔符记在项上、而不是渲染时按字段名前缀去猜，是为了让往返
+  /// 字节一致：上游用了什么分隔符，原样还给它。首项的值无意义。
+  mut comma_before : Bool
 }
 
 ///|
