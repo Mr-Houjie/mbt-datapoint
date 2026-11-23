@@ -76,6 +76,37 @@ APPENDIX_A_CASES = [
     ("HJ212-2025 附录A", APPENDIX_A_2025_SEGMENT, 87, 0x2200),
 ]
 
+# HJ 212-2025 附录 A.2 的加密示例（示例 1 明文 / 示例 2 密文）。
+#
+# 这里只转录标准给出的密文，不重新加密：A.2 的密文是标准原文，用 16 个 0x30
+# 作密钥、SM4-ECB-Nopadding 分组加密示例 1 的数据区得到。脚本不该再实现一遍
+# SM4——那门课在 sm4/ 子包里做，而且对拍基准必须是标准原文的字节，不是自己
+# 再算一遍的字节。
+#
+# 报文里能自检的部分照旧自检：长度字段必须是 295（前缀 85 + 内容 208 + "&&"），
+# 校验码必须是 2200（按明文算，所以与示例 1 相同）。
+A2_PREFIX = (
+    "QN=20240520210700000;ST=31;CN=2051;PW=123456;"
+    "MN=010000A8900016F000169DC0;Flag=9;CP=&&"
+)
+A2_CONTENT = (
+    "DataTime=20240520210600;"
+    "a01011-Min=1.35,a01011-Avg=1.35,a01011-Max=1.35,a01011-Flag=N;"
+    "a01012-Min=9.3,a01012-Avg=9.3,a01012-Max=9.3,a01012-Flag=N;"
+    "a01014-Min=3.20,a01014-Avg=3.211,a01014-Max=3.212,a01014-Flag=N"
+)
+A2_CIPHER_HEX = (
+    "E43E159ACFAB242CB53155FB8B9281A1A242577ABFAED881BE88B72D69FC55ED"
+    "1A80119FAAC8B3CD33D285CC76F57F2CA7F88B9573C6647E0F07E24609BD6B63"
+    "EB20C5B9784F28E71D2F4994FF61D9E1C2B3075592B4D1E09C4D8BB27BE97B55"
+    "9E3DA6643781A6F477769DEEB009B10DFFF3426922725D607DC4480F0CAC5F70"
+    "DB2587B124BCB281592721D6E4BC180A97E5E111499CBE822E31C8D776155354"
+    "3AA24207C290997BBDE64F9266BC5F529A172E381C1D898CA1A0D771A914A7B2"
+    "D7467C70B94F1D4A7B0350A48DBF8B41"
+)
+
+# 两版标准各自标注的长度与校验码，作为自检基准。
+
 GOOD = {
     "2011__real-time-gas.frame": seg(
         QN, "31", "2011", "123456", MN, "5",
@@ -253,6 +284,31 @@ def main() -> None:
         for old in os.listdir(d):
             os.remove(os.path.join(d, old))
 
+    # A.2 加密示例：长度与校验码按明文算，密文用标准原文的字节。
+    a2_plain = (A2_PREFIX + A2_CONTENT + "&&").encode("utf-8")
+    a2_cipher = bytes.fromhex(A2_CIPHER_HEX)
+    if len(a2_plain) != 295 or len(A2_CONTENT) != 208:
+        sys.stderr.write("A.2 自检失败：明文字节数 %d（应为 295）\n" % len(a2_plain))
+        sys.exit(1)
+    if len(a2_cipher) != 208:
+        sys.stderr.write("A.2 自检失败：密文 %d 字节（应为 208）\n" % len(a2_cipher))
+        sys.exit(1)
+    a2_crc = crc16(a2_plain)
+    if a2_crc != 0x2200:
+        sys.stderr.write("A.2 自检失败：CRC 算出 0x%04X（应为 0x2200）\n" % a2_crc)
+        sys.exit(1)
+    cipher_dir = os.path.join(ROOT, "cipher")
+    os.makedirs(cipher_dir, exist_ok=True)
+    for old in os.listdir(cipher_dir):
+        os.remove(os.path.join(cipher_dir, old))
+    write(
+        os.path.join(cipher_dir, "a2-example2.frame"),
+        b"##0295"
+        + A2_PREFIX.encode("utf-8")
+        + a2_cipher
+        + b"&&2200\r\n",
+    )
+
     # 标准正文的示例报文单独落在 good/ 下，自检每次都会跑它们。
     write(
         os.path.join(ROOT, "good", "appendix-a__标准附录A示例.frame"),
@@ -271,9 +327,10 @@ def main() -> None:
     for name, s in BAD.items():
         write(os.path.join(ROOT, "bad", name), build_bad(name, s))
 
-    total = 2 + len(GOOD) + len(EDGE) + len(SPLIT) + len(BAD)
+    total = 2 + len(GOOD) + len(EDGE) + len(SPLIT) + len(BAD) + 1
     sys.stdout.write(
-        "生成 %d 个语料文件（附录 A 示例自检通过：2017=0x1C80，2025=0x2200）\n"
+        "生成 %d 个语料文件（附录 A 示例自检通过：2017=0x1C80，2025=0x2200；"
+        "附录 A.2 加密示例：明文 295 字节 / 密文 208 字节 / CRC 0x2200）\n"
         % total
     )
 
