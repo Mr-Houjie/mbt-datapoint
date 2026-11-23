@@ -423,4 +423,6 @@ FAIL（帧层）命令编码 2051 按标准 6.4.4 必须加密，但未提供解
 - `moon run cmd/verify`：35 个用例全部通过，含加密链路端到端；
 - `moon check --deny-warn`：零告警；
 - `python3 tools/check_doc_outputs.py`：本文 11 段命令输出与实现逐字一致；
+- CI：全绿，含 check / test / 语料自检 / 构建 / 文档输出对账五步；
+- mooncakes：`Mr-Houjie/mbt-datapoint@0.5.0` 已发布；外部新建项目 `moon add` 后 3/3 通过（`CN` 判定、缺组件报 `CipherRequired`、注入 `sm4` 解出 13 项与 1 个数据点）；
 - 语料 36 个帧 / 流文件（`good/` 12、`edge/` 6、`split/` 5、`bad/` 11、`stream/` 1、`cipher/` 1）加 1 份规则配置。按自检口径归并为 35 个用例：`split/` 的 5 个分包文件归为 2 组重组用例，规则配置拆成「语法」与「命中」两条。

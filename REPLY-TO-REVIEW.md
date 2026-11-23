@@ -199,6 +199,9 @@ FAIL（帧层）命令编码 2051 按标准 6.4.4 必须加密，但未提供解
 | `moon check --deny-warn` | **零告警** |
 | `python3 tools/check_doc_outputs.py` | **11 段命令输出与实现逐字一致**（含 `cipher` 两条） |
 | 语料 | 36 个帧 / 流文件 + 1 份规则配置，其中 `cipher/` 为加密报文的原始字节 |
+| CI | 全绿（`7da7935`），含 check / test / 语料自检 / 构建 / 文档输出对账五步 |
+| mooncakes | `Mr-Houjie/mbt-datapoint@0.5.0` 已发布，`moon publish` 的服务端校验通过 |
+| 外部冒烟 | 新建项目 `moon add Mr-Houjie/mbt-datapoint@0.5.0` 后 3/3 通过：`CN` 判定、缺组件报 `CipherRequired`、注入 `sm4` 把 307 字节加密报文解成 13 项并转成 1 个数据点 |
 
 上述命令在仓库根目录可直接重跑。`STANDARD-COMPLIANCE.md` 里所有以 `$ mbt-datapoint` 开头的代码块都由 `tools/check_doc_outputs.py` 真实执行并逐行比对，接入 CI——少一行、多一个空格即失败。
 
