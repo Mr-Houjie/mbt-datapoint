@@ -87,6 +87,11 @@ fn hex_value(c : Char) -> Int32 {
 
 ///|
 /// 解析一段十进制数字，空段或含非数字返回 `None`。
+///
+/// 超出 `Int32` 范围也返回 `None`，**不静默溢出**。报文字段是外部输入，
+/// `PNUM=99999999999` 这种值累加出来会翻成负数或垃圾正数（实测
+/// `99999999999 -> 1215752191`、`2147483648 -> -2147483648`），
+/// 下游再拿它做包号比较，行为完全不可预测。
 fn parse_uint(cs : Array[Char], start : Int32, len : Int32) -> Int32? {
   if len <= 0 || start < 0 || start + len > cs.length() {
     return None
@@ -98,7 +103,12 @@ fn parse_uint(cs : Array[Char], start : Int32, len : Int32) -> Int32? {
     if !is_digit_char(c) {
       return None
     }
-    value = value * 10 + (c.to_int() - 48)
+    let digit = c.to_int() - 48
+    // 2147483647 是 Int32 上限：先看再乘，乘完就不会越界。
+    if value > 214748364 || (value == 214748364 && digit > 7) {
+      return None
+    }
+    value = value * 10 + digit
     i = i + 1
   }
   Some(value)

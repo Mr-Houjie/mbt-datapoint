@@ -143,6 +143,31 @@ pub(all) enum DecodeError {
 }
 
 ///|
+/// 编码阶段的错误。
+///
+/// 单列一个类型而不并进 `DecodeError`：两者方向相反——解码错误描述
+/// 「对方给的东西哪里不对」，编码错误描述「我要发的东西发不出去」。
+pub(all) enum EncodeError {
+  /// 数据段 UTF-8 字节数超过 4 位长度字段能表示的上限：实际、上限
+  TooLong(Int32, Int32)
+}
+
+///|
+pub fn EncodeError::kind(self : EncodeError) -> String {
+  match self {
+    TooLong(_, _) => "TooLong"
+  }
+}
+
+///|
+pub fn EncodeError::message(self : EncodeError) -> String {
+  match self {
+    TooLong(actual, max) =>
+      "数据段 \{actual} 字节，超过长度字段能表示的 \{max} 字节上限"
+  }
+}
+
+///|
 /// 稳定的错误码，供上层程序分支判断或写日志用。
 ///
 /// 与 `message()` 的区别：`message()` 是给人看的中文描述，措辞可能随版本调整；

@@ -136,8 +136,12 @@ fn find_char(cs : Array[Char], target : Char, from : Int32) -> Int32 {
 }
 
 ///|
-/// 字段名只允许字母、数字、下划线与连字符（如 `Data-Flag`）。
-fn is_valid_field_name(name : String) -> Bool {
+/// 字段名是否合法（只允许字母、数字、下划线与连字符）。
+///
+/// 公开出来是为了让调用方在构造数据区之前就能自检——`set` / `set_values`
+/// 遇到非法名会直接中止程序，因为在写入口放行就等于允许构造出一个
+/// 自己都解析不了的数据区。
+pub fn is_valid_field_name(name : String) -> Bool {
   if name == "" {
     return false
   }
@@ -286,6 +290,10 @@ pub fn DataArea::remove(self : DataArea, name : String) -> Bool {
 
 ///|
 /// 解析带符号整数。允许前导 `+` / `-`，不允许小数点。
+///
+/// 与 `parse_uint` 一样，超出 `Int32` 范围返回 `None` 而不是静默溢出。
+/// 这条路径读的是报文字段值（`RtdInterval`、`Flag`、`PNUM`…），
+/// 溢出后得到的垃圾值会一路流到包号比较和位域判断里。
 fn parse_int_text(text : String) -> Int32? {
   let cs = trim_chars(chars_of(text))
   if cs.length() == 0 {
@@ -307,7 +315,13 @@ fn parse_int_text(text : String) -> Int32? {
     if !is_digit_char(cs[i]) {
       return None
     }
-    value = value * 10 + (cs[i].to_int() - 48)
+    let digit = cs[i].to_int() - 48
+    // 正负两侧都按 2147483647 封顶：`-2147483648` 这个唯一边界值也拒绝，
+    // 它在 HJ 212 的字段语义里没有意义，放行只会增加一条要维护的例外。
+    if value > 214748364 || (value == 214748364 && digit > 7) {
+      return None
+    }
+    value = value * 10 + digit
     i = i + 1
   }
   if negative {
@@ -369,11 +383,21 @@ pub fn DataArea::set(self : DataArea, name : String, value : String) -> Unit {
 
 ///|
 /// 追加或覆盖一个多值字段。
+///
+/// 字段名不合法时直接中止。写入口是唯一还来得及拦的地方——放过去之后，
+/// `text()` 会生成一个连自己的解析器都读不回来的数据区（`set("a=b", "2")`
+/// 渲染成 `a=b=2`，再解析会被读成字段 `a` 的值 `b=2`，静默错位）。
+/// 这类调用是代码写错了，不是数据脏了，所以按编程错误处理。
 pub fn DataArea::set_values(
   self : DataArea,
   name : String,
   values : Array[String],
 ) -> Unit {
+  if !is_valid_field_name(name) {
+    abort(
+      "字段名 \"\{name}\" 含非法字符（只允许字母、数字、下划线、连字符），不能写入数据区",
+    )
+  }
   let mut i = 0
   while i < self.items.length() {
     if self.items[i].name == name {

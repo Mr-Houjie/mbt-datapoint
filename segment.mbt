@@ -90,16 +90,33 @@ pub fn Segment::parse(text : String) -> Result[Segment, DecodeError] {
               Some(v) => flag_raw = Some(v & 0xFF)
               None => return Err(BadFieldValue(name, value))
             }
-          "PNUM" =>
-            match parse_uint_all(value) {
-              Some(v) => pnum = Some(v)
-              None => return Err(BadFieldValue(name, value))
+          // PNUM / PNO 在标准表里是「字符 6」，即最多 6 个字符（≤ 999999）。
+          // 不校验的话，一条 `PNUM=2147483647` 的报文会让 Reassembler 的
+          // missing() 循环二十亿次——40 字节就能打死进程。
+          "PNUM" => {
+            let v = match parse_uint_all(value) {
+              Some(v) => v
+              None => {
+                return Err(BadFieldValue(name, value))
+              }
             }
-          "PNO" =>
-            match parse_uint_all(value) {
-              Some(v) => pno = Some(v)
-              None => return Err(BadFieldValue(name, value))
+            if v > 999999 {
+              return Err(BadFieldValue(name, value))
             }
+            pnum = Some(v)
+          }
+          "PNO" => {
+            let v = match parse_uint_all(value) {
+              Some(v) => v
+              None => {
+                return Err(BadFieldValue(name, value))
+              }
+            }
+            if v > 999999 {
+              return Err(BadFieldValue(name, value))
+            }
+            pno = Some(v)
+          }
           // 2025 版新增：RF=1 表示补传报文，非补传时无本字段。
           "RF" =>
             match parse_uint_all(value) {

@@ -14,11 +14,35 @@
 ///
 /// 数据段由字段重新生成（而不是复用输入原文），因此输出是规范形式，
 /// 空格、字段顺序、`&&` 包装都会被归一化。
+///
+/// 数据段超过 9999 字节时无法编码——长度字段只有 4 位。这种情况下
+/// **直接中止程序**，而不是输出一个 5 位的长度字段：后者会生成一条
+/// 连本库自己都解不回来的报文（`##12086` 会被读成长度 1208，解析错位后
+/// 报 `BadCrc`），错误只会在对端或下游炸开。生产代码若不希望中止，
+/// 先用 `can_encode()` 判断，或用 `encode_checked()` 拿 `Result`。
 pub fn Frame::encode(self : Frame) -> String {
+  match self.encode_checked() {
+    Ok(text) => text
+    Err(e) => abort(e.message())
+  }
+}
+
+///|
+/// 编码一条报文，长度超限时返回错误而不是中止。
+pub fn Frame::encode_checked(self : Frame) -> Result[String, EncodeError] {
   let segment = self.segment.text()
   let len = utf8_len(segment)
+  if len > 9999 {
+    return Err(TooLong(len, 9999))
+  }
   let crc = crc16_text(segment)
-  "##\{zero_pad(len, 4)}\{segment}\{hex4(crc)}\r\n"
+  Ok("##\{zero_pad(len, 4)}\{segment}\{hex4(crc)}\r\n")
+}
+
+///|
+/// 这条报文的数据段能否塞进 4 位长度字段。
+pub fn Frame::can_encode(self : Frame) -> Bool {
+  utf8_len(self.segment.text()) <= 9999
 }
 
 ///|
@@ -298,7 +322,31 @@ pub fn Framer::feed(self : Framer, chunk : String) -> Array[FrameEvent] {
 
 ///|
 /// 一次性解码多帧文本，返回全部事件。
+///
+/// 与 `Framer::feed` 的差别只在末尾：流式调用会把拼不完整的残片留在缓冲区
+/// 等下一次 `read`，而这里 framer 用完就丢，残片必须有去处。早期版本直接
+/// 丢掉它，`decode_all("##0010QN=2024")` 返回空数组——调用方看到的是
+/// 「文本里没有帧」，而不是「有一帧只说了一半」。现在补报一条 `Bad`。
 pub fn decode_all(text : String) -> Array[FrameEvent] {
   let framer = Framer::new()
-  framer.feed(text)
+  let events = framer.feed(text)
+  let left = framer.pending()
+  if left > 0 {
+    let tail = framer.buffer
+    events.push(Bad(Truncated(declared_length_of(tail), left), tail))
+  }
+  events
+}
+
+///|
+/// 从残片头部读长度声明；读不出来返回 0（表示残片里连长度字段都不全）。
+fn declared_length_of(text : String) -> Int32 {
+  let cs = chars_of(text)
+  if cs.length() < 6 || cs[0] != '#' || cs[1] != '#' {
+    return 0
+  }
+  match parse_uint_all(slice_chars(cs, 2, 6)) {
+    Some(v) => v
+    None => 0
+  }
 }

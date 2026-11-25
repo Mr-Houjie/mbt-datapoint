@@ -65,15 +65,18 @@ pub fn Reassembler::missing(self : Reassembler) -> Array[Int32] {
   if self.total <= 0 {
     return out
   }
+  // 用位图标记已收到的包号，而不是「对 1..total 每个号都扫一遍 parts」。
+  // 后者是 O(total × parts)：PNUM 上限 999999 时会跑上百万次，
+  // 一条报文就能让调用方卡在这里。位图是 O(total + parts)。
+  let seen : Array[Bool] = Array::make(self.total + 1, false)
+  for p in self.parts {
+    if p.pno >= 1 && p.pno <= self.total {
+      seen[p.pno] = true
+    }
+  }
   let mut n = 1
   while n <= self.total {
-    let mut found = false
-    for p in self.parts {
-      if p.pno == n {
-        found = true
-      }
-    }
-    if !found {
+    if !seen[n] {
       out.push(n)
     }
     n = n + 1

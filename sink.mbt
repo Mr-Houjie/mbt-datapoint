@@ -139,7 +139,8 @@ pub fn to_ndjson(points : Array[Point]) -> String {
 /// CSV 单元格转义。
 ///
 /// 含逗号、引号、换行的值要整体加引号并把引号翻倍；以 = + - @ 或
-/// 制表符 / 回车开头的值要加单引号前缀，防止 Excel / WPS 把它当公式。
+/// 制表符 / 回车 / 换行开头的值要加单引号前缀，防止 Excel / WPS
+/// 把它当公式。换行开头同样能触发公式解析，早期只列了 `\r` 漏了 `\n`。
 fn csv_cell(text : String) -> String {
   let mut guarded = text
   if text.length() > 0 {
@@ -149,7 +150,8 @@ fn csv_cell(text : String) -> String {
       first == '-' ||
       first == '@' ||
       first == '\t' ||
-      first == '\r' {
+      first == '\r' ||
+      first == '\n' {
       guarded = "'" + text
     }
   }
