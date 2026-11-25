@@ -125,6 +125,16 @@ pub fn Pipeline::stats(self : Pipeline) -> Stats {
 }
 
 ///|
+/// 缓冲区里尚未成帧的字节数。
+///
+/// `run` 是一次性入口，末尾拼不完整的残片不会出现在输出里——它既不是
+/// 数据点，也不会进 `rejected`（那统计的是被拒的帧）。所以「这段文本
+/// 是不是被完整吃掉了」只能看这个数：非 0 说明末尾被截断了。
+pub fn Pipeline::pending(self : Pipeline) -> Int32 {
+  self.framer.pending()
+}
+
+///|
 pub fn Pipeline::format(self : Pipeline) -> Format {
   self.format
 }

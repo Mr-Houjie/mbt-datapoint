@@ -190,10 +190,18 @@ fn cmd_convert(args : Array[String]) -> Int32 {
   let pipeline = @lib.Pipeline::new(rules, opt.format, opt.columns)
   let out = pipeline.run(normalize_input(text))
   let stats = pipeline.stats()
+  // 末尾被截断的报文既不出数据点，也不进 rejected——它是残片，不是坏帧。
+  // 不单独报的话，这两种情况会共用「输入里没有 HJ 212 报文」这条结论，
+  // 而它们指向完全相反的方向。
+  let pending = pipeline.pending()
   if stats.points() == 0 {
     if stats.rejected() > 0 {
       println(
         "没有产出数据点：\{stats.rejected()} 条报文解码失败",
+      )
+    } else if pending > 0 {
+      println(
+        "没有产出数据点：末尾有 \{pending} 字节拼不成完整报文（原文可能被截断）",
       )
     } else {
       println("没有产出数据点：输入里没有 HJ 212 报文")
@@ -203,6 +211,10 @@ fn cmd_convert(args : Array[String]) -> Int32 {
   let body = trim_tail(out)
   if body != "" {
     println(unify_eol(body))
+  }
+  // 警告走 stderr：stdout 是数据，重定向进 CSV 时不能被提示污染。
+  if pending > 0 {
+    eprintln("警告: 末尾有 \{pending} 字节拼不成完整报文，未计入输出")
   }
   0
 }
@@ -320,6 +332,7 @@ fn cmd_stats(args : Array[String]) -> Int32 {
     "  校验问题      \{stats.findings()}（错误 \{stats.errors()}）",
   )
   println("  缓冲区溢出    \{stats.overflow()}")
+  println("  残余未成帧    \{pipeline.pending()}")
   println("  丢弃分包组    \{stats.dropped_groups()}")
   println("  输出字节      \{out.length()}")
   println("")

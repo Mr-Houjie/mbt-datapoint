@@ -181,3 +181,22 @@ test "回归：字段名校验公开可见" {
     assert_false(is_valid_field_name(n))
   }
 }
+
+///|
+test "回归：Pipeline::pending 能看出末尾残帧" {
+  // run 是一次性入口，残片既不出数据点也不进 rejected。没有这个访问器，
+  // 调用方无法区分「文本里没有报文」和「末尾被截断」。
+  let p = Pipeline::new(RuleSet::new(), Ndjson, [])
+  let _ = p.feed("##0016QN=2024")
+  assert_eq(p.pending(), 13)
+  // 完整帧不该留下残余
+  let seg = match Segment::parse(
+    "QN=20240520210600;ST=31;CN=2011;PW=123456;MN=010000A8900016F000169DC0;Flag=9;CP=&&&&",
+  ) {
+    Ok(s) => s
+    Err(e) => abort(e.message())
+  }
+  let q = Pipeline::new(RuleSet::new(), Ndjson, [])
+  let _ = q.feed({ segment: seg }.encode())
+  assert_eq(q.pending(), 0)
+}
