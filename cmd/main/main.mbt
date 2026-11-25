@@ -473,7 +473,15 @@ fn cmd_encode(args : Array[String]) -> Int32 {
       extra: [],
     },
   }
-  let text = frame.encode()
+  let text = match frame.encode_checked() {
+    Ok(text) => text
+    Err(e) => {
+      // 数据段超 9999 字节时长度字段装不下。命令行不该让 abort 直接崩掉，
+      // 给一句人话加非零退出码，和其余子命令的错误处理保持一致。
+      println("错误: \{e.message()}")
+      return 2
+    }
+  }
   // encode() 自带包尾 \r\n；println 会再补一个换行，这里去掉包尾只留一个换行。
   println(text.trim_end(chars="\r\n"))
   0
