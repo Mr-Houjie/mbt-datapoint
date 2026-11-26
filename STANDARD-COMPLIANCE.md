@@ -221,6 +221,7 @@ $ mbt-datapoint stats corpus/good/appendix-a__标准附录A示例.frame
   数据点        1
   校验问题      0（错误 0）
   缓冲区溢出    0
+  残余未成帧    0
   丢弃分包组    0
   输出字节      144
 

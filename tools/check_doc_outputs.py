@@ -12,6 +12,7 @@
 任何差异都报出来并退出非零——这份材料是给审核方照着重跑的，
 少一行、多一个空格都算不准。
 """
+import glob
 import os
 import re
 import subprocess
@@ -70,10 +71,38 @@ def run(cmd):
     return out.rstrip("\n").split("\n") if out.strip() else [], p.returncode
 
 
+def check_binary_fresh():
+    """二进制比源码旧就直接失败。
+
+    本地踩过一次：改完 `cmd/main/flow.mbt` 先跑了对账（用的旧二进制，全绿），
+    之后才 `moon build`，CI 拿新二进制立刻红了。对账比的是**行为**而不是源码，
+    拿旧二进制比对等于什么都没验——而且它还会笑着说「0 个不一致」。
+    """
+    if not os.path.exists(BIN):
+        return  # 交给调用方报「先构建」
+    bin_mtime = os.path.getmtime(BIN)
+    srcs = []
+    for pat in ("*.mbt", "cmd/main/*.mbt", "sm4/*.mbt"):
+        srcs.extend(glob.glob(os.path.join(ROOT, pat)))
+    srcs.append(os.path.join(ROOT, "moon.mod"))
+    newer = [p for p in srcs if os.path.exists(p) and os.path.getmtime(p) > bin_mtime]
+    if newer:
+        names = "、".join(
+            os.path.relpath(p, ROOT).replace("\\", "/") for p in sorted(newer)[:5]
+        )
+        print(
+            "二进制比源码旧（%s 更新），对账会拿旧行为比新文档。先跑 moon build。"
+            % names,
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
 def main():
     if not os.path.exists(BIN):
         print("先构建：moon build --target native cmd/main", file=sys.stderr)
         sys.exit(2)
+    check_binary_fresh()
     md = open(DOC, encoding="utf-8").read()
     total = bad = 0
     for cmd, expect, want_code in blocks(md):
